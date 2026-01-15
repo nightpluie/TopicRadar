@@ -1,0 +1,8 @@
+flask
+flask-cors
+feedparser
+requests
+apscheduler
+python-dotenv
+gunicorn
+pytz

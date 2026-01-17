@@ -83,7 +83,7 @@ function createTopicCard(topicId, topicData) {
 
         <div class="ai-summary">
             <div class="section-label">
-                <span>AI 最新進展摘要</span>
+                <span>最新進展摘要</span>
                 <span class="update-badge">${getUpdateBadgeText(topicData.summary_updated)}</span>
             </div>
             <div class="summary-content">

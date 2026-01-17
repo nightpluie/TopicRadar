@@ -8,11 +8,15 @@ import time
 import hashlib
 import feedparser
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
+
+# 台北時區
+TAIPEI_TZ = ZoneInfo('Asia/Taipei')
 
 # 載入環境變數
 load_dotenv()
@@ -49,7 +53,6 @@ RSS_SOURCES_TW = {
 RSS_SOURCES_INTL = {
     'BBC News': 'https://feeds.bbci.co.uk/news/rss.xml',
     'The Guardian': 'https://www.theguardian.com/world/rss',
-    'The Japan Times': 'https://www.japantimes.co.jp/feed',
     'NHK (日文)': 'https://www3.nhk.or.jp/rss/news/cat0.xml',
     '朝日新聞 (日文)': 'http://rss.asahi.com/rss/asahi/newsheadlines.rdf',
 }
@@ -272,18 +275,18 @@ def generate_topic_summary(topic_id):
         else:
             context = "（暫無相關 RSS 新聞）"
 
-        current_time = datetime.now().strftime('%Y/%m/%d')
+        current_time = datetime.now(TAIPEI_TZ).strftime('%Y/%m/%d')
         
         payload = {
             "model": PERPLEXITY_MODEL,
             "messages": [
                 {
                     "role": "system",
-                    "content": "你是一位資深專題記者，正在為已經熟悉議題背景的同事更新最新進展。請用「進度報告」的格式撰寫，假設讀者已了解議題背景，不需要重複說明基本概念或歷史脈絡。直接切入最新動態和變化。"
+                    "content": "你是一位資深專題記者，正在為已經熟悉議題背景的同事更新最新進展。假設讀者已了解議題背景，不需要重複說明基本概念或歷史脈絡。直接切入最新動態和變化，不要加任何標題或前綴。"
                 },
                 {
                     "role": "user",
-                    "content": f"議題：{topic_name}\n日期：{current_time}\n\n請用進度報告格式，重點說明：\n1. 本週或近期有什麼新動態？（政策發布、協商進展、重要事件、爭議）\n2. 目前推進到什麼階段？有什麼關鍵進展或轉折？\n3. 接下來值得關注的焦點是什麼？\n\n格式要求：\n- 200 字以內，繁體中文\n- 用「進度更新」語氣，不是「議題介紹」\n- 不要使用引用標記（[1][2] 等）\n- 語氣專業、客觀、精簡"
+                    "content": f"議題：{topic_name}\n日期：{current_time}\n\n請直接說明（不要標題、不要前綴）：\n1. 本週或近期有什麼新動態？（政策發布、協商進展、重要事件、爭議）\n2. 目前推進到什麼階段？有什麼關鍵進展或轉折？\n3. 接下來值得關注的焦點是什麼？\n\n格式要求：\n- 200 字以內，繁體中文\n- 直接開始內容，不要「進度報告」、「最新動態」等標題\n- 不要使用引用標記（[1][2] 等）\n- 不要在結尾標註字數\n- 語氣專業、客觀、精簡"
                 }
             ],
             "max_tokens": 500,
@@ -298,13 +301,21 @@ def generate_topic_summary(topic_id):
         
         # 移除可能的引用標記 [1], [2] 等
         summary = re.sub(r'\[\d+\]', '', summary)
-        
+
         # 移除 markdown 格式符號（#、**、*、###等）
         summary = re.sub(r'^#{1,6}\s*', '', summary, flags=re.MULTILINE)  # 移除標題符號
         summary = re.sub(r'\*\*([^*]+)\*\*', r'\1', summary)  # 移除粗體 **text**
         summary = re.sub(r'\*([^*]+)\*', r'\1', summary)  # 移除斜體 *text*
         summary = re.sub(r'^[-*]\s+', '', summary, flags=re.MULTILINE)  # 移除列表符號
-        
+
+        # 移除開頭可能出現的標題（如「進度報告：」「最新動態：」等）
+        summary = re.sub(r'^[^：]*進度報告[：:]\s*', '', summary)
+        summary = re.sub(r'^[^：]*最新動態[：:]\s*', '', summary)
+        summary = re.sub(r'^[^：]*摘要[：:]\s*', '', summary)
+
+        # 移除結尾的字數標記（如「（200字）」「(200字)」等）
+        summary = re.sub(r'[（(]\s*\d+\s*字\s*[）)]$', '', summary)
+
         return summary.strip() if summary else "（無法生成摘要）"
     
     except Exception as e:
@@ -313,25 +324,36 @@ def generate_topic_summary(topic_id):
 
 # ============ RSS 抓取 ============
 
-def fetch_rss(url, source_name, timeout=15):
+def fetch_rss(url, source_name, timeout=15, max_items=50):
+    """抓取 RSS，增加最大抓取數量以確保能找到足夠的相關新聞"""
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers, timeout=timeout, verify=False)
         response.raise_for_status()
         feed = feedparser.parse(response.content)
-        
+
         items = []
-        for entry in feed.entries[:30]:
+        # 增加抓取數量從 30 到 max_items，確保有足夠新聞可過濾
+        for entry in feed.entries[:max_items]:
+            # 獲取標題，跳過空標題
+            title = entry.get('title', '').strip()
+            if not title:
+                continue
+
             published = None
             if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                published = datetime(*entry.published_parsed[:6])
+                # RSS 時間通常是 UTC，轉換為台北時間
+                published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                published = published.astimezone(TAIPEI_TZ)
             elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
-                published = datetime(*entry.updated_parsed[:6])
+                published = datetime(*entry.updated_parsed[:6], tzinfo=timezone.utc)
+                published = published.astimezone(TAIPEI_TZ)
             else:
-                published = datetime.now()
-            
+                # 使用台北時間的當前時間
+                published = datetime.now(TAIPEI_TZ)
+
             items.append({
-                'title': entry.get('title', ''),
+                'title': title,
                 'link': entry.get('link', ''),
                 'source': source_name,
                 'published': published,
@@ -342,28 +364,101 @@ def fetch_rss(url, source_name, timeout=15):
         print(f"[ERROR] 抓取 {source_name} 失敗: {e}")
         return []
 
-def keyword_match(text, keywords):
-    """關鍵字比對"""
+def fetch_google_news_by_keywords(keywords, max_items=50):
+    """使用 Google News 搜索特定關鍵字的新聞，並提取原始媒體來源"""
+    if not keywords:
+        return []
+
+    # 使用第一個關鍵字作為搜索詞
+    search_term = keywords[0] if isinstance(keywords, list) else keywords
+    # Google News 搜索 RSS
+    url = f"https://news.google.com/rss/search?q={search_term}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=15, verify=False)
+        response.raise_for_status()
+        feed = feedparser.parse(response.content)
+
+        items = []
+        for entry in feed.entries[:max_items]:
+            # 獲取標題，跳過空標題
+            title = entry.get('title', '').strip()
+            if not title:
+                continue
+
+            # 提取原始媒體來源（Google News RSS 特有）
+            source_name = 'Google News'
+            if hasattr(entry, 'source') and entry.source:
+                source_name = entry.source.get('title', 'Google News')
+
+            # 處理時間
+            published = None
+            is_date_only = False
+
+            if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                published = published.astimezone(TAIPEI_TZ)
+
+                # 檢查是否是整點時間（可能只是日期的占位符）
+                # 例如 08:00:00 可能只代表當天，不是真實時間
+                if published.minute == 0 and published.second == 0:
+                    is_date_only = True
+            else:
+                published = datetime.now(TAIPEI_TZ)
+
+            items.append({
+                'title': title,
+                'link': entry.get('link', ''),
+                'source': source_name,  # 使用原始媒體名稱
+                'published': published,
+                'summary': entry.get('summary', '')[:200],
+                'is_date_only': is_date_only  # 標記僅有日期
+            })
+        return items
+    except Exception as e:
+        print(f"[ERROR] Google News 搜索失敗: {e}")
+        return []
+
+def keyword_match(text, keywords, negative_keywords=None):
+    """
+    關鍵字比對，支援負面關鍵字過濾
+
+    Args:
+        text: 要檢查的文字
+        keywords: 正面關鍵字列表（匹配任一即可）
+        negative_keywords: 負面關鍵字列表（包含任一則排除）
+    """
     if not text or not keywords:
         return False
+
     text_lower = text.lower()
+
+    # 先檢查負面關鍵字，如果包含則直接排除
+    if negative_keywords:
+        for neg_kw in negative_keywords:
+            if neg_kw.lower() in text_lower:
+                return False
+
+    # 再檢查正面關鍵字
     for kw in keywords:
         if kw.lower() in text_lower:
             return True
+
     return False
 
 def update_topic_news():
-    print(f"\n[UPDATE] 開始更新新聞 - {datetime.now().strftime('%H:%M:%S')}")
+    print(f"\n[UPDATE] 開始更新新聞 - {datetime.now(TAIPEI_TZ).strftime('%H:%M:%S')}")
 
-    # 1. 抓取台灣新聞
+    # 1. 抓取台灣新聞（增加抓取數量）
     all_news_tw = []
     for name, url in RSS_SOURCES_TW.items():
-        all_news_tw.extend(fetch_rss(url, name))
+        all_news_tw.extend(fetch_rss(url, name, max_items=50))
 
-    # 2. 抓取國際新聞
+    # 2. 抓取國際新聞（增加抓取數量）
     all_news_intl = []
     for name, url in RSS_SOURCES_INTL.items():
-        all_news_intl.extend(fetch_rss(url, name))
+        all_news_intl.extend(fetch_rss(url, name, max_items=50))
 
     # 3. 過濾台灣新聞和國際新聞
     for tid, cfg in TOPICS.items():
@@ -379,33 +474,79 @@ def update_topic_news():
             keywords_en = keywords.get('en', [])
             keywords_ja = keywords.get('ja', [])
 
-        # 過濾台灣新聞（使用中文關鍵字）
+        # 獲取負面關鍵字
+        negative_keywords = cfg.get('negative_keywords', [])
+
+        # 過濾台灣新聞（使用中文關鍵字）- 確保至少10則
         if not keywords_zh:
             DATA_STORE['topics'][tid] = []
         else:
+            # 取得現有新聞列表
+            existing_news = DATA_STORE['topics'].get(tid, [])
+            existing_hashes = {hashlib.md5(item['title'].encode()).hexdigest(): item
+                             for item in existing_news}
+
+            # 過濾新新聞
             filtered_tw = []
-            seen_tw = set()
+            seen_tw = set(existing_hashes.keys())
+            new_items = []
+
             for item in all_news_tw:
                 content = f"{item['title']} {item['summary']}"
-                if keyword_match(content, keywords_zh):
+                if keyword_match(content, keywords_zh, negative_keywords):
                     h = hashlib.md5(item['title'].encode()).hexdigest()
                     if h not in seen_tw:
                         seen_tw.add(h)
-                        filtered_tw.append(item)
+                        new_items.append(item)
 
-            filtered_tw.sort(key=lambda x: x['published'], reverse=True)
-            DATA_STORE['topics'][tid] = filtered_tw[:20]
+            # 合併：新新聞 + 現有新聞，按時間排序
+            all_items = new_items + existing_news
+            all_items.sort(key=lambda x: x['published'], reverse=True)
 
-        # 過濾國際新聞（使用英日文關鍵字）
+            # 如果新聞數量少於 10 則，使用 Google News 搜索補充
+            if len(all_items) < 10:
+                print(f"[SEARCH] {cfg['name']}: 只有 {len(all_items)} 則，使用 Google News 搜索補充...")
+                google_news = fetch_google_news_by_keywords(keywords_zh, max_items=100)
+
+                # 過濾並去重
+                existing_hashes_all = {hashlib.md5(item['title'].encode()).hexdigest() for item in all_items}
+                for item in google_news:
+                    if len(all_items) >= 10:
+                        break
+                    content = f"{item['title']} {item['summary']}"
+                    if keyword_match(content, keywords_zh, negative_keywords):
+                        h = hashlib.md5(item['title'].encode()).hexdigest()
+                        if h not in existing_hashes_all:
+                            existing_hashes_all.add(h)
+                            all_items.append(item)
+
+                all_items.sort(key=lambda x: x['published'], reverse=True)
+                print(f"[SEARCH] {cfg['name']}: 補充後共 {len(all_items)} 則新聞")
+
+            # 保持最新的 10 則（一則一則替換）
+            DATA_STORE['topics'][tid] = all_items[:10]
+
+            if new_items:
+                print(f"[UPDATE] {cfg['name']}: 新增 {len(new_items)} 則新聞，當前 {len(DATA_STORE['topics'][tid])} 則")
+
+        # 過濾國際新聞（使用英日文關鍵字）- 確保至少10則
         intl_keywords = keywords_en + keywords_ja
         if not intl_keywords:
             DATA_STORE['international'][tid] = []
         else:
+            # 取得現有國際新聞
+            existing_intl = DATA_STORE['international'].get(tid, [])
+            existing_intl_hashes = {hashlib.md5(item.get('title_original', item['title']).encode()).hexdigest(): item
+                                   for item in existing_intl}
+
+            # 過濾新的國際新聞
             filtered_intl = []
-            seen_intl = set()
+            seen_intl = set(existing_intl_hashes.keys())
+            new_intl_items = []
+
             for item in all_news_intl:
                 content = f"{item['title']} {item['summary']}"
-                if keyword_match(content, intl_keywords):
+                if keyword_match(content, intl_keywords, negative_keywords):
                     h = hashlib.md5(item['title'].encode()).hexdigest()
                     if h not in seen_intl:
                         seen_intl.add(h)
@@ -414,13 +555,20 @@ def update_topic_news():
                         translated_title = translate_with_gemini(original_title)
                         item['title_original'] = original_title
                         item['title'] = translated_title
-                        filtered_intl.append(item)
+                        new_intl_items.append(item)
                         time.sleep(0.5)  # 每次翻譯後等待 0.5 秒
 
-            filtered_intl.sort(key=lambda x: x['published'], reverse=True)
-            DATA_STORE['international'][tid] = filtered_intl[:10]
+            # 合併：新新聞 + 現有新聞，按時間排序
+            all_intl_items = new_intl_items + existing_intl
+            all_intl_items.sort(key=lambda x: x['published'], reverse=True)
 
-    DATA_STORE['last_update'] = datetime.now().isoformat()
+            # 保持最新的 10 則（一則一則替換）
+            DATA_STORE['international'][tid] = all_intl_items[:10]
+
+            if new_intl_items:
+                print(f"[UPDATE] {cfg['name']} (國際): 新增 {len(new_intl_items)} 則新聞，保持最新 10 則")
+
+    DATA_STORE['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
     print("[UPDATE] 完成")
     # 摘要更新改用排程（每天 8:00 和 18:00），不在新聞更新時觸發
 
@@ -430,7 +578,7 @@ def update_all_summaries():
         summary = generate_topic_summary(tid)
         DATA_STORE['summaries'][tid] = {
             'text': summary,
-            'updated_at': datetime.now().isoformat()
+            'updated_at': datetime.now(TAIPEI_TZ).isoformat()
         }
         time.sleep(1)
     print("[SUMMARY] 完成")
@@ -455,12 +603,24 @@ def get_all():
 
         # 格式化台灣新聞
         fmt_news = []
+        now = datetime.now(TAIPEI_TZ)
         for n in news[:10]:
             dt = n['published']
-            now = datetime.now()
-            if dt.date() == now.date():
+            # 確保 dt 有時區資訊
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=TAIPEI_TZ)
+
+            # 根據日期決定顯示格式
+            is_date_only = n.get('is_date_only', False)
+
+            if is_date_only:
+                # Google News 等只有日期的新聞，只顯示日期
+                time_str = dt.strftime('%m/%d')
+            elif dt.date() == now.date():
+                # 今天的新聞顯示時間
                 time_str = dt.strftime('%H:%M')
             else:
+                # 其他日期顯示月/日
                 time_str = dt.strftime('%m/%d')
 
             fmt_news.append({
@@ -474,7 +634,11 @@ def get_all():
         fmt_intl_news = []
         for n in intl_news[:5]:
             dt = n['published']
-            now = datetime.now()
+            # 確保 dt 有時區資訊
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=TAIPEI_TZ)
+
+            # 根據日期決定顯示格式
             if dt.date() == now.date():
                 time_str = dt.strftime('%H:%M')
             else:
@@ -538,6 +702,7 @@ def get_topics():
         result[tid] = {
             'name': cfg['name'],
             'keywords': display_keywords,
+            'negative_keywords': cfg.get('negative_keywords', []),
             'icon': cfg.get('icon', ''),
             'summary': summary_data.get('text', ''),
             'summary_updated': summary_data.get('updated_at'),
@@ -551,17 +716,26 @@ def add_topic():
     name = data.get('name', '').strip()
     if not name:
         return jsonify({'error': 'Empty name'}), 400
-    
+
     # AI 生成關鍵字
     keywords = generate_keywords_with_ai(name)
-    
+
     tid = generate_topic_id(name)
     TOPICS[tid] = {'name': name, 'keywords': keywords}
     save_topics_config()
-    
+
     # 立即更新該專題新聞
     update_topic_news()
-    
+
+    # 立即為新專題生成第一次摘要
+    if PERPLEXITY_API_KEY:
+        print(f"[INIT] 為新專題「{name}」生成 AI 摘要...")
+        summary = generate_topic_summary(tid)
+        DATA_STORE['summaries'][tid] = {
+            'text': summary,
+            'updated_at': datetime.now(TAIPEI_TZ).isoformat()
+        }
+
     return jsonify({'status': 'ok'})
 
 @app.route('/api/admin/topics/<tid>', methods=['PUT'])
@@ -571,6 +745,8 @@ def update_topic(tid):
     data = request.json
     if 'keywords' in data:
         TOPICS[tid]['keywords'] = data['keywords']
+    if 'negative_keywords' in data:
+        TOPICS[tid]['negative_keywords'] = data['negative_keywords']
     save_topics_config()
     update_topic_news()
     return jsonify({'status': 'ok'})
@@ -604,11 +780,11 @@ init_scheduler()
 if __name__ == '__main__':
     print("[INIT] 初始化資料...")
     update_topic_news()
-    
+
     if PERPLEXITY_API_KEY:
         # 啟動時自動生成摘要
         print("[INIT] 生成 AI 摘要...")
-        update_all_summaries() 
-        
-    app.run(port=5001, debug=True, use_reloader=False)
+        update_all_summaries()
+
+    app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
 

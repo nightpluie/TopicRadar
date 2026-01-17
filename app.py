@@ -57,6 +57,13 @@ RSS_SOURCES_INTL = {
     '朝日新聞 (日文)': 'http://rss.asahi.com/rss/asahi/newsheadlines.rdf',
 }
 
+# Google News 國際版來源
+GOOGLE_NEWS_INTL_REGIONS = {
+    '日本': {'code': 'JP', 'lang': 'ja'},
+    '美國': {'code': 'US', 'lang': 'en'},
+    '法國': {'code': 'FR', 'lang': 'fr'},
+}
+
 # 預設專題設定
 DEFAULT_TOPICS = {
     'migrant_workers': {
@@ -79,6 +86,15 @@ DATA_STORE = {
     'international': {},    # 每個專題的國際新聞列表（翻譯後）
     'summaries': {},        # 每個專題的 AI 摘要
     'last_update': None,
+}
+
+# 載入進度狀態
+LOADING_STATUS = {
+    'is_loading': False,
+    'current': 0,
+    'total': 0,
+    'current_topic': '',
+    'phase': ''  # 'news' 或 'summary'
 }
 
 TOPICS = {}
@@ -282,14 +298,14 @@ def generate_topic_summary(topic_id):
             "messages": [
                 {
                     "role": "system",
-                    "content": "你是一位資深專題記者，正在為已經熟悉議題背景的同事更新最新進展。假設讀者已了解議題背景，不需要重複說明基本概念或歷史脈絡。直接切入最新動態和變化，不要加任何標題或前綴。"
+                    "content": "你是一位資深專題記者，正在為已經熟悉議題背景的同事更新最新進展。假設讀者已了解議題背景，不需要重複說明基本概念或歷史脈絡。直接切入最新動態和變化。"
                 },
                 {
                     "role": "user",
-                    "content": f"議題：{topic_name}\n日期：{current_time}\n\n請直接說明（不要標題、不要前綴）：\n1. 本週或近期有什麼新動態？（政策發布、協商進展、重要事件、爭議）\n2. 目前推進到什麼階段？有什麼關鍵進展或轉折？\n3. 接下來值得關注的焦點是什麼？\n\n格式要求：\n- 200 字以內，繁體中文\n- 直接開始內容，不要「進度報告」、「最新動態」等標題\n- 不要使用引用標記（[1][2] 等）\n- 不要在結尾標註字數\n- 語氣專業、客觀、精簡"
+                    "content": f"議題：{topic_name}\n日期：{current_time}\n\n請用純文字格式（不要markdown）輸出最新進展摘要：\n\n內容要求：\n1. 本週或近期有什麼新動態？（政策發布、協商進展、重要事件、爭議）\n2. 目前推進到什麼階段？有什麼關鍵進展或轉折？\n3. 總共120字以內，繁體中文\n4. 如果有2-3個重點，每個重點自成一句，用句號結尾即可\n\n格式規則（非常重要）：\n- 第一個字直接開始寫內容，不要有任何空行、空格或前綴\n- 不要任何標題（如「最新動態」「進度報告」等）\n- 不要引用標記 [1][2]\n- 不要markdown符號（#、**、*、-）\n- 不要在結尾標註字數\n- 不要空行分段，所有內容連續書寫\n- 每個重點用句號結尾，然後直接接下一個重點\n\n範例格式（注意沒有空行）：\n勞保年金改革草案已於2026年1月正式啟動，預計最低投保薪資調升至29,500元。法案審議預計在2026年3月完成初審，但藍綠對於年齡級距仍存在分歧。接下來需關注立法院審議進度及各方協商結果。"
                 }
             ],
-            "max_tokens": 500,
+            "max_tokens": 400,
             "temperature": 0.2
         }
         
@@ -297,30 +313,46 @@ def generate_topic_summary(topic_id):
         response.raise_for_status()
         
         data = response.json()
-        summary = data.get('choices', [{}])[0].get('message', {}).get('content', '')
-        
+        content = data.get('choices', [{}])[0].get('message', {}).get('content', '')
+
         # 移除可能的引用標記 [1], [2] 等
-        summary = re.sub(r'\[\d+\]', '', summary)
+        content = re.sub(r'\[\d+\]', '', content)
 
         # 移除 markdown 格式符號（#、**、*、###等）
-        summary = re.sub(r'^#{1,6}\s*', '', summary, flags=re.MULTILINE)  # 移除標題符號
-        summary = re.sub(r'\*\*([^*]+)\*\*', r'\1', summary)  # 移除粗體 **text**
-        summary = re.sub(r'\*([^*]+)\*', r'\1', summary)  # 移除斜體 *text*
-        summary = re.sub(r'^[-*]\s+', '', summary, flags=re.MULTILINE)  # 移除列表符號
+        content = re.sub(r'^#{1,6}\s*', '', content, flags=re.MULTILINE)  # 移除標題符號
+        content = re.sub(r'\*\*([^*]+)\*\*', r'\1', content)  # 移除粗體 **text**
+        content = re.sub(r'\*([^*]+)\*', r'\1', content)  # 移除斜體 *text*
+        content = re.sub(r'^[-*]\s+', '', content, flags=re.MULTILINE)  # 移除列表符號
 
         # 移除開頭可能出現的標題（如「進度報告：」「最新動態：」等）
-        summary = re.sub(r'^[^：]*進度報告[：:]\s*', '', summary)
-        summary = re.sub(r'^[^：]*最新動態[：:]\s*', '', summary)
-        summary = re.sub(r'^[^：]*摘要[：:]\s*', '', summary)
+        content = re.sub(r'^[^：]*進度報告[：:]\s*', '', content)
+        content = re.sub(r'^[^：]*最新動態[：:]\s*', '', content)
+        content = re.sub(r'^[^：]*摘要[：:]\s*', '', content)
 
         # 移除結尾的字數標記（如「（200字）」「(200字)」等）
-        summary = re.sub(r'[（(]\s*\d+\s*字\s*[）)]$', '', summary)
+        content = re.sub(r'[（(]\s*\d+\s*字\s*[）)]$', '', content)
 
-        return summary.strip() if summary else "（無法生成摘要）"
+        # 第一次清理：移除首尾空白
+        content = content.strip()
+
+        # 第二次清理：移除開頭的所有空白字符（包括空格、tab、換行）
+        while content and content[0] in (' ', '\t', '\n', '\r'):
+            content = content[1:]
+
+        # 第三次清理：使用 regex 移除開頭所有空白
+        content = re.sub(r'^[\s\n\r]+', '', content)
+
+        # 移除結尾的所有連續空行
+        content = re.sub(r'[\s\n\r]+$', '', content)
+
+        # 最後一次 strip 確保乾淨
+        content = content.strip()
+
+        return content if content else "（無法生成摘要）"
     
     except Exception as e:
         print(f"[ERROR] Perplexity 摘要失敗: {e}")
-        return f"（摘要生成失敗）"
+        return "（摘要生成失敗）"
 
 # ============ RSS 抓取 ============
 
@@ -420,6 +452,52 @@ def fetch_google_news_by_keywords(keywords, max_items=50):
         print(f"[ERROR] Google News 搜索失敗: {e}")
         return []
 
+def fetch_google_news_intl(keywords, region_code, lang, max_items=30):
+    """使用 Google News 國際版搜索特定國家的新聞"""
+    if not keywords:
+        return []
+
+    # 使用第一個關鍵字作為搜索詞
+    search_term = keywords[0] if isinstance(keywords, list) else keywords
+    # Google News 國際版 RSS（根據國家代碼和語言）
+    url = f"https://news.google.com/rss/search?q={search_term}&hl={lang}&gl={region_code}&ceid={region_code}:{lang}"
+
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        response = requests.get(url, headers=headers, timeout=15, verify=False)
+        response.raise_for_status()
+        feed = feedparser.parse(response.content)
+
+        items = []
+        for entry in feed.entries[:max_items]:
+            title = entry.get('title', '').strip()
+            if not title:
+                continue
+
+            # 提取原始媒體來源
+            source_name = f'Google News ({region_code})'
+            if hasattr(entry, 'source') and entry.source:
+                source_name = entry.source.get('title', source_name)
+
+            # 處理時間
+            if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                published = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+                published = published.astimezone(TAIPEI_TZ)
+            else:
+                published = datetime.now(TAIPEI_TZ)
+
+            items.append({
+                'title': title,
+                'link': entry.get('link', ''),
+                'source': source_name,
+                'published': published,
+                'summary': entry.get('summary', '')[:200]
+            })
+        return items
+    except Exception as e:
+        print(f"[ERROR] Google News {region_code} 搜索失敗: {e}")
+        return []
+
 def keyword_match(text, keywords, negative_keywords=None):
     """
     關鍵字比對，支援負面關鍵字過濾
@@ -448,6 +526,15 @@ def keyword_match(text, keywords, negative_keywords=None):
     return False
 
 def update_topic_news():
+    global LOADING_STATUS
+    total_topics = len(TOPICS)
+    LOADING_STATUS = {
+        'is_loading': True,
+        'current': 0,
+        'total': total_topics,
+        'current_topic': '',
+        'phase': 'news'
+    }
     print(f"\n[UPDATE] 開始更新新聞 - {datetime.now(TAIPEI_TZ).strftime('%H:%M:%S')}")
 
     # 1. 抓取台灣新聞（增加抓取數量）
@@ -460,8 +547,35 @@ def update_topic_news():
     for name, url in RSS_SOURCES_INTL.items():
         all_news_intl.extend(fetch_rss(url, name, max_items=50))
 
-    # 3. 過濾台灣新聞和國際新聞
+    # 2.5 抓取 Google News 國際版新聞（日本、美國、法國）
+    # 為每個專題的國際關鍵字抓取對應國家的新聞
+    google_news_intl = []
     for tid, cfg in TOPICS.items():
+        keywords = cfg.get('keywords', {})
+        if isinstance(keywords, dict):
+            keywords_en = keywords.get('en', [])
+            keywords_ja = keywords.get('ja', [])
+
+            # 日本 Google News（使用日文關鍵字）
+            if keywords_ja:
+                google_news_intl.extend(fetch_google_news_intl(keywords_ja, 'JP', 'ja', max_items=20))
+
+            # 美國 Google News（使用英文關鍵字）
+            if keywords_en:
+                google_news_intl.extend(fetch_google_news_intl(keywords_en, 'US', 'en', max_items=20))
+
+            # 法國 Google News（使用英文關鍵字）
+            if keywords_en:
+                google_news_intl.extend(fetch_google_news_intl(keywords_en, 'FR', 'fr', max_items=20))
+
+    all_news_intl.extend(google_news_intl)
+
+    # 3. 過濾台灣新聞和國際新聞
+    topic_index = 0
+    for tid, cfg in TOPICS.items():
+        topic_index += 1
+        LOADING_STATUS['current'] = topic_index
+        LOADING_STATUS['current_topic'] = cfg['name']
         keywords = cfg.get('keywords', {})
 
         # 處理舊格式（純列表）vs 新格式（字典）
@@ -562,22 +676,67 @@ def update_topic_news():
             all_intl_items = new_intl_items + existing_intl
             all_intl_items.sort(key=lambda x: x['published'], reverse=True)
 
+            # 如果新聞數量少於 5 則，使用 Google News 國際版補充
+            if len(all_intl_items) < 5:
+                print(f"[SEARCH] {cfg['name']} (國際): 只有 {len(all_intl_items)} 則，使用 Google News 國際版補充...")
+
+                # 依序從日本、美國、法國 Google News 補充
+                for region_name, region_info in GOOGLE_NEWS_INTL_REGIONS.items():
+                    if len(all_intl_items) >= 5:
+                        break
+
+                    # 根據語言選擇關鍵字
+                    search_keywords = keywords_ja if region_info['lang'] == 'ja' else keywords_en
+                    if not search_keywords:
+                        continue
+
+                    google_intl = fetch_google_news_intl(
+                        search_keywords,
+                        region_info['code'],
+                        region_info['lang'],
+                        max_items=20
+                    )
+
+                    # 過濾並翻譯
+                    existing_hashes_all = {hashlib.md5(item.get('title_original', item['title']).encode()).hexdigest()
+                                         for item in all_intl_items}
+                    for item in google_intl:
+                        if len(all_intl_items) >= 5:
+                            break
+                        content = f"{item['title']} {item['summary']}"
+                        if keyword_match(content, intl_keywords, negative_keywords):
+                            h = hashlib.md5(item['title'].encode()).hexdigest()
+                            if h not in existing_hashes_all:
+                                existing_hashes_all.add(h)
+                                # 翻譯標題
+                                original_title = item['title']
+                                translated_title = translate_with_gemini(original_title)
+                                item['title_original'] = original_title
+                                item['title'] = translated_title
+                                all_intl_items.append(item)
+                                time.sleep(0.5)
+
+                all_intl_items.sort(key=lambda x: x['published'], reverse=True)
+                print(f"[SEARCH] {cfg['name']} (國際): 補充後共 {len(all_intl_items)} 則新聞")
+
             # 保持最新的 10 則（一則一則替換）
             DATA_STORE['international'][tid] = all_intl_items[:10]
 
             if new_intl_items:
-                print(f"[UPDATE] {cfg['name']} (國際): 新增 {len(new_intl_items)} 則新聞，保持最新 10 則")
+                print(f"[UPDATE] {cfg['name']} (國際): 新增 {len(new_intl_items)} 則新聞，當前 {len(DATA_STORE['international'][tid])} 則")
 
     DATA_STORE['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
+    LOADING_STATUS['is_loading'] = False
+    LOADING_STATUS['current'] = total_topics
     print("[UPDATE] 完成")
     # 摘要更新改用排程（每天 8:00 和 18:00），不在新聞更新時觸發
 
 def update_all_summaries():
     print(f"\n[SUMMARY] 開始 AI 摘要...")
     for tid in TOPICS.keys():
-        summary = generate_topic_summary(tid)
+        summary_text = generate_topic_summary(tid)
         DATA_STORE['summaries'][tid] = {
-            'text': summary,
+            'text': summary_text,
             'updated_at': datetime.now(TAIPEI_TZ).isoformat()
         }
         time.sleep(1)
@@ -630,9 +789,9 @@ def get_all():
                 'time': time_str
             })
 
-        # 格式化國際新聞
+        # 格式化國際新聞（最多10則）
         fmt_intl_news = []
-        for n in intl_news[:5]:
+        for n in intl_news[:10]:
             dt = n['published']
             # 確保 dt 有時區資訊
             if dt.tzinfo is None:
@@ -667,7 +826,8 @@ def get_all():
             'summary': summary.get('text', ''),
             'summary_updated': summary.get('updated_at'),
             'news': fmt_news,
-            'international': fmt_intl_news
+            'international': fmt_intl_news,
+            'order': cfg.get('order', 999)
         }
     return jsonify(result)
 
@@ -680,6 +840,11 @@ def refresh():
 def refresh_summary():
     update_all_summaries()
     return jsonify({'status': 'ok'})
+
+@app.route('/api/loading-status')
+def loading_status():
+    """回傳載入進度狀態"""
+    return jsonify(LOADING_STATUS)
 
 @app.route('/api/admin/topics', methods=['GET'])
 def get_topics():
@@ -706,7 +871,8 @@ def get_topics():
             'icon': cfg.get('icon', ''),
             'summary': summary_data.get('text', ''),
             'summary_updated': summary_data.get('updated_at'),
-            'news_count': news_count
+            'news_count': news_count,
+            'order': cfg.get('order', 999)
         }
     return jsonify({'topics': result, 'last_update': DATA_STORE['last_update']})
 
@@ -720,8 +886,12 @@ def add_topic():
     # AI 生成關鍵字
     keywords = generate_keywords_with_ai(name)
 
+    # 計算新專題的 order（放在最後）
+    max_order = max([t.get('order', 0) for t in TOPICS.values()], default=-1)
+    new_order = max_order + 1
+
     tid = generate_topic_id(name)
-    TOPICS[tid] = {'name': name, 'keywords': keywords}
+    TOPICS[tid] = {'name': name, 'keywords': keywords, 'order': new_order}
     save_topics_config()
 
     # 立即更新該專題新聞
@@ -730,9 +900,9 @@ def add_topic():
     # 立即為新專題生成第一次摘要
     if PERPLEXITY_API_KEY:
         print(f"[INIT] 為新專題「{name}」生成 AI 摘要...")
-        summary = generate_topic_summary(tid)
+        summary_text = generate_topic_summary(tid)
         DATA_STORE['summaries'][tid] = {
-            'text': summary,
+            'text': summary_text,
             'updated_at': datetime.now(TAIPEI_TZ).isoformat()
         }
 
@@ -758,6 +928,26 @@ def delete_topic(tid):
         save_topics_config()
     return jsonify({'status': 'ok'})
 
+@app.route('/api/admin/topics/reorder', methods=['PUT'])
+def reorder_topics():
+    """更新專題排序"""
+    data = request.json
+    order_list = data.get('order', [])
+
+    print(f"[REORDER] 收到排序請求: {order_list}")
+
+    # 更新每個專題的 order 欄位
+    for item in order_list:
+        tid = item.get('id')
+        order = item.get('order')
+        if tid in TOPICS:
+            TOPICS[tid]['order'] = order
+            print(f"[REORDER] 更新 {TOPICS[tid]['name']} 的順序為 {order}")
+
+    save_topics_config()
+    print("[REORDER] 順序已儲存到 topics_config.json")
+    return jsonify({'status': 'ok'})
+
 # ============ Main ============
 
 def init_scheduler():
@@ -778,13 +968,21 @@ load_topics_config()
 init_scheduler()
 
 if __name__ == '__main__':
-    print("[INIT] 初始化資料...")
-    update_topic_news()
+    import threading
 
-    if PERPLEXITY_API_KEY:
-        # 啟動時自動生成摘要
-        print("[INIT] 生成 AI 摘要...")
-        update_all_summaries()
+    # 在背景線程執行初始化資料
+    def background_init():
+        print("[INIT] 背景載入資料...")
+        update_topic_news()
+        if PERPLEXITY_API_KEY:
+            print("[INIT] 生成 AI 摘要...")
+            update_all_summaries()
+        print("[INIT] 背景載入完成")
 
+    # 啟動背景線程
+    init_thread = threading.Thread(target=background_init, daemon=True)
+    init_thread.start()
+
+    print("[SERVER] 伺服器啟動中... (資料將在背景載入)")
     app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
 

@@ -35,7 +35,8 @@
       "黑戶",
       "愛情",
       "戀愛"
-    ]
+    ],
+    "order": 1
   },
   "labor_pension": {
     "name": "勞保年金改革",
@@ -82,7 +83,8 @@
       "購物",
       "試鞋",
       "逛街"
-    ]
+    ],
+    "order": 0
   },
   "川普對台關稅_54353": {
     "name": "川普對台關稅",
@@ -128,7 +130,8 @@
         "輸出関税",
         "USTR"
       ]
-    }
+    },
+    "order": 2
   },
   "長照_69311": {
     "name": "長照",
@@ -174,6 +177,105 @@
         "介護者",
         "高齢者福祉"
       ]
-    }
+    },
+    "order": 6
+  },
+  "間諜家家酒_47090": {
+    "name": "間諜家家酒",
+    "keywords": {
+      "zh": [
+        "間諜家家酒",
+        "SPY×FAMILY",
+        "間諜家家酒劇場版",
+        "動畫",
+        "漫畫",
+        "遠藤達哉",
+        "WIT STUDIO",
+        "CloverWorks",
+        "安妮亞",
+        "洛伊德",
+        "約兒",
+        "集英社",
+        "聲優",
+        "票房",
+        "人氣動畫"
+      ],
+      "en": [
+        "SPY×FAMILY",
+        "anime",
+        "manga",
+        "Tatsuya Endo",
+        "WIT STUDIO",
+        "CloverWorks",
+        "Anya Forger",
+        "Loid Forger",
+        "Yor Forger",
+        "Spy Family movie"
+      ],
+      "ja": [
+        "SPY×FAMILY",
+        "スパイファミリー",
+        "アニメ",
+        "漫画",
+        "遠藤達哉",
+        "WIT STUDIO",
+        "CloverWorks",
+        "アーニャ",
+        "ロイド",
+        "ヨル",
+        "劇場版"
+      ]
+    },
+    "order": 4
+  },
+  "核能_44667": {
+    "name": "核能",
+    "keywords": {
+      "zh": [
+        "核能",
+        "核電",
+        "核電廠",
+        "核反應爐",
+        "核廢料",
+        "核安",
+        "核能政策",
+        "能源政策",
+        "台電",
+        "放射性廢棄物",
+        "核燃料",
+        "核能發電",
+        "核子工程",
+        "核能安全",
+        "除役"
+      ],
+      "en": [
+        "Nuclear energy",
+        "Nuclear power",
+        "Nuclear power plant",
+        "Nuclear reactor",
+        "Nuclear waste",
+        "Nuclear safety",
+        "Nuclear policy",
+        "Energy policy",
+        "Radioactive waste",
+        "Nuclear fuel",
+        "Nuclear power generation",
+        "Nuclear engineering"
+      ],
+      "ja": [
+        "原子力",
+        "原子力発電",
+        "原子力発電所",
+        "原子炉",
+        "核廃棄物",
+        "原子力安全",
+        "原子力政策",
+        "エネルギー政策",
+        "放射性廃棄物",
+        "核燃料",
+        "原子力発電"
+      ]
+    },
+    "order": 5
   }
 }

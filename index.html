@@ -16,12 +16,15 @@
                 <span class="logo-text">專題雷達 TOPIC RADAR</span>
             </div>
             <div class="status-info">
+                <span class="loading-status">狀態: <span id="loading-status">檢查中...</span></span>
+                <span class="separator">|</span>
                 <span class="update-time">最後更新: <span id="last-update">--</span></span>
                 <span class="separator">|</span>
                 <span class="data-status">追蹤 <span id="topic-count">0</span> 個專題</span>
             </div>
             <div class="header-actions">
-                <button class="btn-refresh" onclick="TopicRadar.refresh()" title="更新新聞">更新</button>
+                <button class="btn-refresh" onclick="TopicRadar.refresh()" title="更新新聞">更新動態</button>
+                <button class="btn-refresh-summary" onclick="TopicRadar.refreshSummary()" title="更新摘要">更新摘要</button>
                 <a href="/admin" class="settings-link" title="後台設定">設定</a>
             </div>
         </div>
@@ -36,8 +39,8 @@
 
         <!-- 底部資訊列 -->
         <div class="bottom-bar">
-            <span>專題雷達 v1.0 | 資料來源：政府公開資訊、媒體報導</span>
-            <span>Powered by AI</span>
+            <span>專題雷達 v1.0 | 資料來源：各大媒體</span>
+            <span>Design by Chen-Yu TANG</span>
         </div>
     </div>
 

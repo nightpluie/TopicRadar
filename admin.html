@@ -525,6 +525,10 @@
                 // 綁定拖曳事件
                 card.addEventListener('dragstart', handleDragStart);
                 card.addEventListener('dragend', handleDragEnd);
+                card.addEventListener('dragenter', handleDragEnter);
+                card.addEventListener('dragover', handleDragOver);
+                card.addEventListener('dragleave', handleDragLeave);
+                card.addEventListener('drop', handleDrop);
 
                 container.appendChild(card);
             });
@@ -702,45 +706,56 @@
 
         // === 拖曳排序功能 ===
         let draggedElement = null;
-        let placeholder = null;
 
         function handleDragStart(e) {
             draggedElement = this;
             this.classList.add('dragging');
-
-            // 設置拖動效果
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/html', this.innerHTML);
-
-            // 創建佔位元素
-            setTimeout(() => {
-                this.style.opacity = '0.5';
-            }, 0);
-
             console.log('開始拖動:', this.dataset.topicId);
+        }
+
+        function handleDragEnter(e) {
+            if (this.classList.contains('topic-card') && this !== draggedElement) {
+                this.classList.add('drag-over');
+            }
         }
 
         function handleDragOver(e) {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
+            return false;
+        }
 
-            const target = e.target.closest('.topic-card[draggable="true"]');
+        function handleDragLeave(e) {
+            if (e.target === this) {
+                this.classList.remove('drag-over');
+            }
+        }
 
-            if (target && target !== draggedElement) {
-                // 獲取所有卡片
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (this !== draggedElement && this.classList.contains('topic-card')) {
+                this.classList.remove('drag-over');
+
+                // 交換兩個元素的位置
                 const container = document.getElementById('topics-container');
                 const allCards = Array.from(container.querySelectorAll('.topic-card[draggable="true"]'));
 
                 const draggedIndex = allCards.indexOf(draggedElement);
-                const targetIndex = allCards.indexOf(target);
+                const targetIndex = allCards.indexOf(this);
 
-                // 移動被拖動的元素
-                if (draggedIndex < targetIndex) {
-                    // 向後拖：插入到目標之後
-                    target.parentNode.insertBefore(draggedElement, target.nextSibling);
-                } else if (draggedIndex > targetIndex) {
-                    // 向前拖：插入到目標之前
-                    target.parentNode.insertBefore(draggedElement, target);
+                if (draggedIndex !== -1 && targetIndex !== -1) {
+                    // 交換 DOM 位置
+                    if (draggedIndex < targetIndex) {
+                        // 被拖動的在前面，目標在後面
+                        container.insertBefore(this, draggedElement);
+                    } else {
+                        // 被拖動的在後面，目標在前面
+                        container.insertBefore(draggedElement, this);
+                    }
                 }
             }
 
@@ -749,9 +764,6 @@
 
         function handleDragEnd(e) {
             console.log('結束拖動');
-
-            // 恢復透明度
-            this.style.opacity = '1';
             this.classList.remove('dragging');
 
             // 移除所有 drag-over class
@@ -785,12 +797,8 @@
                 if (response.ok) {
                     const result = await response.json();
                     console.log('排序已儲存成功:', result);
-                    // 更新本地資料
-                    newOrder.forEach(item => {
-                        if (topicsData[item.id]) {
-                            topicsData[item.id].order = item.order;
-                        }
-                    });
+                    // 重新載入資料以確保 DOM 和 order 值一致
+                    await loadTopics();
                 } else {
                     const error = await response.text();
                     console.error('排序儲存失敗:', error);
@@ -808,10 +816,6 @@
         document.addEventListener('DOMContentLoaded', () => {
             loadTopics();
             startLoadingStatusCheck();
-
-            // 綁定容器的 dragover 事件（只綁定一次）
-            const container = document.getElementById('topics-container');
-            container.addEventListener('dragover', handleDragOver);
         });
 
         // 載入進度檢查

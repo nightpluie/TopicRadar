@@ -99,6 +99,88 @@ LOADING_STATUS = {
 
 TOPICS = {}
 
+# 資料快取檔案路徑
+DATA_CACHE_FILE = 'data_cache.json'
+
+# ============ 資料快取管理 ============
+
+def save_data_cache():
+    """儲存資料到快取檔案（會覆蓋舊檔）"""
+    try:
+        # 準備要序列化的資料（處理 datetime 物件）
+        cache_data = {
+            'topics': {},
+            'international': {},
+            'summaries': DATA_STORE['summaries'],
+            'last_update': DATA_STORE['last_update']
+        }
+
+        # 處理新聞資料（將 datetime 轉成字串）
+        for tid, news_list in DATA_STORE['topics'].items():
+            cache_data['topics'][tid] = []
+            for news in news_list:
+                news_copy = news.copy()
+                if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                    news_copy['published'] = news_copy['published'].isoformat()
+                cache_data['topics'][tid].append(news_copy)
+
+        for tid, news_list in DATA_STORE['international'].items():
+            cache_data['international'][tid] = []
+            for news in news_list:
+                news_copy = news.copy()
+                if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                    news_copy['published'] = news_copy['published'].isoformat()
+                cache_data['international'][tid].append(news_copy)
+
+        # 寫入檔案（覆蓋）
+        with open(DATA_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f, ensure_ascii=False, indent=2)
+
+        print(f"[CACHE] 資料已儲存到 {DATA_CACHE_FILE}")
+
+    except Exception as e:
+        print(f"[CACHE] 儲存失敗: {e}")
+
+def load_data_cache():
+    """從快取檔案載入資料"""
+    global DATA_STORE
+
+    if not os.path.exists(DATA_CACHE_FILE):
+        print(f"[CACHE] 快取檔案不存在，將使用空資料")
+        return
+
+    try:
+        with open(DATA_CACHE_FILE, 'r', encoding='utf-8') as f:
+            cache_data = json.load(f)
+
+        # 載入摘要和最後更新時間
+        DATA_STORE['summaries'] = cache_data.get('summaries', {})
+        DATA_STORE['last_update'] = cache_data.get('last_update')
+
+        # 載入新聞資料（將字串轉回 datetime）
+        DATA_STORE['topics'] = {}
+        for tid, news_list in cache_data.get('topics', {}).items():
+            DATA_STORE['topics'][tid] = []
+            for news in news_list:
+                news_copy = news.copy()
+                if 'published' in news_copy and isinstance(news_copy['published'], str):
+                    news_copy['published'] = datetime.fromisoformat(news_copy['published'])
+                DATA_STORE['topics'][tid].append(news_copy)
+
+        DATA_STORE['international'] = {}
+        for tid, news_list in cache_data.get('international', {}).items():
+            DATA_STORE['international'][tid] = []
+            for news in news_list:
+                news_copy = news.copy()
+                if 'published' in news_copy and isinstance(news_copy['published'], str):
+                    news_copy['published'] = datetime.fromisoformat(news_copy['published'])
+                DATA_STORE['international'][tid].append(news_copy)
+
+        print(f"[CACHE] 從快取載入了 {len(DATA_STORE['topics'])} 個專題的資料")
+
+    except Exception as e:
+        print(f"[CACHE] 載入快取失敗: {e}")
+
 # ============ 專題設定管理 ============
 
 def load_topics_config():
@@ -525,6 +607,123 @@ def keyword_match(text, keywords, negative_keywords=None):
 
     return False
 
+def update_single_topic_news(topic_id):
+    """只更新單一專題的新聞（用於新增專題時）"""
+    if topic_id not in TOPICS:
+        return
+
+    cfg = TOPICS[topic_id]
+    print(f"\n[UPDATE] 更新單一專題新聞: {cfg['name']}")
+
+    # 1. 抓取台灣新聞
+    all_news_tw = []
+    for name, url in RSS_SOURCES_TW.items():
+        all_news_tw.extend(fetch_rss(url, name, max_items=50))
+
+    # 2. 抓取國際新聞
+    all_news_intl = []
+    for name, url in RSS_SOURCES_INTL.items():
+        all_news_intl.extend(fetch_rss(url, name, max_items=50))
+
+    # 3. 抓取該專題的 Google News 國際版
+    keywords = cfg.get('keywords', {})
+    if isinstance(keywords, dict):
+        keywords_en = keywords.get('en', [])
+        keywords_ja = keywords.get('ja', [])
+
+        if keywords_ja:
+            all_news_intl.extend(fetch_google_news_intl(keywords_ja, 'JP', 'ja', max_items=20))
+        if keywords_en:
+            all_news_intl.extend(fetch_google_news_intl(keywords_en, 'US', 'en', max_items=20))
+            all_news_intl.extend(fetch_google_news_intl(keywords_en, 'FR', 'fr', max_items=20))
+
+    # 4. 過濾該專題的新聞
+    keywords_zh = keywords.get('zh', []) if isinstance(keywords, dict) else keywords
+    keywords_en = keywords.get('en', []) if isinstance(keywords, dict) else []
+    keywords_ja = keywords.get('ja', []) if isinstance(keywords, dict) else []
+    negative_keywords = cfg.get('negative_keywords', [])
+
+    # 過濾台灣新聞
+    filtered_tw = [n for n in all_news_tw if keyword_match(n['title'], keywords_zh, negative_keywords)]
+    print(f"[SEARCH] {cfg['name']}: 找到 {len(filtered_tw)} 則台灣新聞")
+
+    # Google News 補充（如需要）
+    if len(filtered_tw) < 10:
+        print(f"[SEARCH] {cfg['name']}: 只有 {len(filtered_tw)} 則，使用 Google News 搜索補充...")
+        google_news = fetch_google_news_by_keywords(keywords_zh, max_items=20)
+        for n in google_news:
+            if keyword_match(n['title'], keywords_zh, negative_keywords):
+                filtered_tw.append(n)
+        print(f"[SEARCH] {cfg['name']}: 補充後共 {len(filtered_tw)} 則新聞")
+
+    # 更新該專題的台灣新聞
+    existing = DATA_STORE['topics'].get(topic_id, [])
+    existing_hashes = {n['hash'] for n in existing}
+
+    new_items = []
+    for n in filtered_tw[:10]:
+        n_hash = hashlib.md5(n['title'].encode()).hexdigest()
+        n['hash'] = n_hash
+        if n_hash not in existing_hashes:
+            new_items.append(n)
+
+    all_items = new_items + existing
+    DATA_STORE['topics'][topic_id] = all_items[:10]
+
+    if new_items:
+        print(f"[UPDATE] {cfg['name']}: 新增 {len(new_items)} 則新聞，當前 {len(DATA_STORE['topics'][topic_id])} 則")
+
+    # 過濾國際新聞
+    intl_keywords = keywords_en + keywords_ja
+    filtered_intl = [n for n in all_news_intl if keyword_match(n['title'], intl_keywords, negative_keywords)]
+
+    # 翻譯國際新聞
+    for n in filtered_intl:
+        if 'title_original' not in n:
+            n['title_original'] = n['title']
+            translated = translate_with_gemini(n['title'])
+            n['title'] = translated if translated else n['title']
+            time.sleep(0.5)
+
+    # Google News 國際補充
+    if len(filtered_intl) < 5:
+        for region_name, region_info in GOOGLE_NEWS_INTL_REGIONS.items():
+            if len(filtered_intl) >= 5:
+                break
+            search_keywords = keywords_ja if region_info['lang'] == 'ja' else keywords_en
+            google_intl = fetch_google_news_intl(search_keywords, region_info['code'], region_info['lang'], max_items=20)
+            for n in google_intl:
+                if keyword_match(n['title'], search_keywords, negative_keywords):
+                    n['title_original'] = n['title']
+                    translated = translate_with_gemini(n['title'])
+                    n['title'] = translated if translated else n['title']
+                    filtered_intl.append(n)
+                    time.sleep(0.5)
+
+    # 更新該專題的國際新聞
+    existing_intl = DATA_STORE['international'].get(topic_id, [])
+    existing_intl_hashes = {n['hash'] for n in existing_intl}
+
+    new_intl_items = []
+    for n in filtered_intl[:10]:
+        n_hash = hashlib.md5(n.get('title_original', n['title']).encode()).hexdigest()
+        n['hash'] = n_hash
+        if n_hash not in existing_intl_hashes:
+            new_intl_items.append(n)
+
+    all_intl_items = new_intl_items + existing_intl
+    DATA_STORE['international'][topic_id] = all_intl_items[:10]
+
+    if new_intl_items:
+        print(f"[UPDATE] {cfg['name']} (國際): 新增 {len(new_intl_items)} 則新聞，當前 {len(DATA_STORE['international'][topic_id])} 則")
+
+    DATA_STORE['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
+
+    # 儲存到快取檔案
+    save_data_cache()
+
+    print(f"[UPDATE] {cfg['name']} 更新完成")
+
 def update_topic_news():
     global LOADING_STATUS
     total_topics = len(TOPICS)
@@ -728,6 +927,10 @@ def update_topic_news():
     DATA_STORE['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
     LOADING_STATUS['is_loading'] = False
     LOADING_STATUS['current'] = total_topics
+
+    # 儲存到快取檔案
+    save_data_cache()
+
     print("[UPDATE] 完成")
     # 摘要更新改用排程（每天 8:00 和 18:00），不在新聞更新時觸發
 
@@ -740,6 +943,10 @@ def update_all_summaries():
             'updated_at': datetime.now(TAIPEI_TZ).isoformat()
         }
         time.sleep(1)
+
+    # 儲存到快取檔案
+    save_data_cache()
+
     print("[SUMMARY] 完成")
 
 # ============ API ============
@@ -894,10 +1101,10 @@ def add_topic():
     TOPICS[tid] = {'name': name, 'keywords': keywords, 'order': new_order}
     save_topics_config()
 
-    # 立即更新該專題新聞
-    update_topic_news()
+    # 只更新新專題的新聞（不更新其他專題）
+    update_single_topic_news(tid)
 
-    # 立即為新專題生成第一次摘要
+    # 只為新專題生成摘要
     if PERPLEXITY_API_KEY:
         print(f"[INIT] 為新專題「{name}」生成 AI 摘要...")
         summary_text = generate_topic_summary(tid)
@@ -965,24 +1172,29 @@ urllib3.disable_warnings()
 
 # ============ 模組載入時初始化（Gunicorn 需要）============
 load_topics_config()
+load_data_cache()  # 先從快取載入資料（快速啟動）
 init_scheduler()
 
 if __name__ == '__main__':
     import threading
+    import sys
 
     # 在背景線程執行初始化資料
     def background_init():
-        print("[INIT] 背景載入資料...")
+        print("[INIT] 背景更新資料...", flush=True)
+        sys.stdout.flush()
         update_topic_news()
         if PERPLEXITY_API_KEY:
-            print("[INIT] 生成 AI 摘要...")
+            print("[INIT] 生成 AI 摘要...", flush=True)
+            sys.stdout.flush()
             update_all_summaries()
-        print("[INIT] 背景載入完成")
+        print("[INIT] 背景更新完成", flush=True)
+        sys.stdout.flush()
 
     # 啟動背景線程
     init_thread = threading.Thread(target=background_init, daemon=True)
     init_thread.start()
 
-    print("[SERVER] 伺服器啟動中... (資料將在背景載入)")
+    print("[SERVER] 伺服器啟動中... (已載入快取資料，新資料將在背景更新)")
     app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
 

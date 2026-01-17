@@ -46,6 +46,7 @@ function createTopicCard(topicId, topicData) {
     const card = document.createElement('div');
     card.className = 'topic-card';
     card.dataset.topicId = topicId;
+    card.draggable = true;
 
     // 檢查是否有新新聞（國內動態）
     const currentNewsCount = (topicData.news || []).length;
@@ -110,6 +111,7 @@ function createTopicCard(topicId, topicData) {
     }
 
     card.innerHTML = `
+        <div class="drag-handle">⋮⋮</div>
         <div class="topic-header">
             <div class="topic-name ${hasNewNews ? 'news-updated' : ''}">${topicData.name || '未命名專題'}</div>
         </div>
@@ -143,6 +145,14 @@ function createTopicCard(topicId, topicData) {
             </div>
         </div>
     `;
+
+    // 綁定拖動事件
+    card.addEventListener('dragstart', handleDragStart);
+    card.addEventListener('dragend', handleDragEnd);
+    card.addEventListener('dragenter', handleDragEnter);
+    card.addEventListener('dragover', handleDragOver);
+    card.addEventListener('dragleave', handleDragLeave);
+    card.addEventListener('drop', handleDrop);
 
     return card;
 }
@@ -272,6 +282,8 @@ function startLoadingStatusCheck() {
     loadingCheckInterval = setInterval(checkLoadingStatus, 2000);
 }
 
+let lastLoadingStatus = null;
+
 async function checkLoadingStatus() {
     try {
         const response = await fetch(`${API_BASE}/api/loading-status`);
@@ -282,14 +294,20 @@ async function checkLoadingStatus() {
         if (status.is_loading) {
             statusEl.textContent = `載入中 ${status.current}/${status.total}`;
             statusEl.className = 'status-loading';
+            lastLoadingStatus = 'loading';
         } else if (status.total > 0) {
             statusEl.textContent = '已載入';
             statusEl.className = 'status-loaded';
-            // 載入完成後重新讀取資料
-            await loadAllData();
+
+            // 只在從「載入中」變成「已載入」時才重新讀取資料
+            if (lastLoadingStatus === 'loading') {
+                await loadAllData();
+                lastLoadingStatus = 'loaded';
+            }
         } else {
             statusEl.textContent = '等待載入';
             statusEl.className = '';
+            lastLoadingStatus = null;
         }
     } catch (error) {
         console.error('[TopicRadar] 檢查載入狀態失敗:', error);
@@ -302,3 +320,103 @@ window.TopicRadar = {
     refreshSummary: refreshSummary,
     reload: loadAllData
 };
+
+// ============ 拖動排序功能 ============
+let draggedElement = null;
+
+function handleDragStart(e) {
+    draggedElement = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', this.innerHTML);
+}
+
+function handleDragEnd(e) {
+    this.classList.remove('dragging');
+
+    // 移除所有 drag-over class
+    document.querySelectorAll('.drag-over').forEach(el => {
+        el.classList.remove('drag-over');
+    });
+
+    // 儲存新順序
+    saveNewOrder();
+}
+
+function handleDragEnter(e) {
+    if (this.classList.contains('topic-card') && this !== draggedElement) {
+        this.classList.add('drag-over');
+    }
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    return false;
+}
+
+function handleDragLeave(e) {
+    if (e.target === this) {
+        this.classList.remove('drag-over');
+    }
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (this !== draggedElement && this.classList.contains('topic-card')) {
+        this.classList.remove('drag-over');
+
+        // 交換兩個元素的位置
+        const container = document.getElementById('dashboard-container');
+        const allCards = Array.from(container.querySelectorAll('.topic-card[draggable="true"]'));
+
+        const draggedIndex = allCards.indexOf(draggedElement);
+        const targetIndex = allCards.indexOf(this);
+
+        if (draggedIndex !== -1 && targetIndex !== -1) {
+            // 交換 DOM 位置
+            if (draggedIndex < targetIndex) {
+                // 被拖動的在前面，目標在後面
+                container.insertBefore(this, draggedElement);
+            } else {
+                // 被拖動的在後面，目標在前面
+                container.insertBefore(draggedElement, this);
+            }
+        }
+    }
+
+    return false;
+}
+
+// 儲存新的排序到後端
+async function saveNewOrder() {
+    const allCards = Array.from(document.querySelectorAll('.topic-card[draggable="true"]'));
+    const newOrder = allCards.map((card, index) => ({
+        id: card.dataset.topicId,
+        order: index
+    }));
+
+    console.log('[TopicRadar] 準備儲存新順序:', newOrder);
+
+    try {
+        const response = await fetch(`${API_BASE}/api/admin/topics/reorder`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order: newOrder })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            console.log('[TopicRadar] 排序已儲存成功:', result);
+        } else {
+            const error = await response.text();
+            console.error('[TopicRadar] 排序儲存失敗:', error);
+            await loadAllData(); // 重新載入復原
+        }
+    } catch (error) {
+        console.error('[TopicRadar] 排序儲存錯誤:', error);
+        await loadAllData(); // 重新載入復原
+    }
+}

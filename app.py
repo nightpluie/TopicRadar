@@ -934,6 +934,207 @@ def update_topic_news():
     print("[UPDATE] 完成")
     # 摘要更新改用排程（每天 8:00 和 18:00），不在新聞更新時觸發
 
+def update_domestic_news():
+    """只更新國內新聞（整點開始每30分鐘）"""
+    global LOADING_STATUS
+    total_topics = len(TOPICS)
+    LOADING_STATUS = {
+        'is_loading': True,
+        'current': 0,
+        'total': total_topics,
+        'current_topic': '',
+        'phase': 'domestic'
+    }
+    print(f"\n[UPDATE:DOMESTIC] 開始更新國內新聞 - {datetime.now(TAIPEI_TZ).strftime('%H:%M:%S')}")
+
+    # 1. 抓取台灣新聞
+    all_news_tw = []
+    for name, url in RSS_SOURCES_TW.items():
+        all_news_tw.extend(fetch_rss(url, name, max_items=50))
+
+    # 2. 過濾台灣新聞
+    topic_index = 0
+    for tid, cfg in TOPICS.items():
+        topic_index += 1
+        LOADING_STATUS['current'] = topic_index
+        LOADING_STATUS['current_topic'] = cfg['name']
+        keywords = cfg.get('keywords', {})
+
+        # 處理舊格式 vs 新格式
+        if isinstance(keywords, list):
+            keywords_zh = keywords
+        else:
+            keywords_zh = keywords.get('zh', [])
+
+        negative_keywords = cfg.get('negative_keywords', [])
+
+        if not keywords_zh:
+            continue
+
+        # 取得現有新聞列表
+        existing_news = DATA_STORE['topics'].get(tid, [])
+        existing_hashes = {hashlib.md5(item['title'].encode()).hexdigest(): item
+                         for item in existing_news}
+
+        # 過濾新新聞
+        seen_tw = set(existing_hashes.keys())
+        new_items = []
+
+        for item in all_news_tw:
+            content = f"{item['title']} {item['summary']}"
+            if keyword_match(content, keywords_zh, negative_keywords):
+                h = hashlib.md5(item['title'].encode()).hexdigest()
+                if h not in seen_tw:
+                    seen_tw.add(h)
+                    new_items.append(item)
+
+        # 合併：新新聞 + 現有新聞，按時間排序
+        all_items = new_items + existing_news
+        all_items.sort(key=lambda x: x['published'], reverse=True)
+
+        # Google News 補充
+        if len(all_items) < 10:
+            google_news = fetch_google_news_by_keywords(keywords_zh, max_items=100)
+            existing_hashes_all = {hashlib.md5(item['title'].encode()).hexdigest() for item in all_items}
+            for item in google_news:
+                if len(all_items) >= 10:
+                    break
+                content = f"{item['title']} {item['summary']}"
+                if keyword_match(content, keywords_zh, negative_keywords):
+                    h = hashlib.md5(item['title'].encode()).hexdigest()
+                    if h not in existing_hashes_all:
+                        existing_hashes_all.add(h)
+                        all_items.append(item)
+
+            all_items.sort(key=lambda x: x['published'], reverse=True)
+
+        DATA_STORE['topics'][tid] = all_items[:10]
+
+        if new_items:
+            print(f"[UPDATE:DOMESTIC] {cfg['name']}: 新增 {len(new_items)} 則新聞")
+
+    DATA_STORE['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
+    LOADING_STATUS['is_loading'] = False
+    save_data_cache()
+    print("[UPDATE:DOMESTIC] 完成")
+
+def update_international_news():
+    """只更新國際新聞（15分開始每30分鐘）"""
+    global LOADING_STATUS
+    total_topics = len(TOPICS)
+    LOADING_STATUS = {
+        'is_loading': True,
+        'current': 0,
+        'total': total_topics,
+        'current_topic': '',
+        'phase': 'international'
+    }
+    print(f"\n[UPDATE:INTL] 開始更新國際新聞 - {datetime.now(TAIPEI_TZ).strftime('%H:%M:%S')}")
+
+    # 1. 抓取國際新聞
+    all_news_intl = []
+    for name, url in RSS_SOURCES_INTL.items():
+        all_news_intl.extend(fetch_rss(url, name, max_items=50))
+
+    # 2. 抓取 Google News 國際版
+    for tid, cfg in TOPICS.items():
+        keywords = cfg.get('keywords', {})
+        if isinstance(keywords, dict):
+            keywords_en = keywords.get('en', [])
+            keywords_ja = keywords.get('ja', [])
+
+            if keywords_ja:
+                all_news_intl.extend(fetch_google_news_intl(keywords_ja, 'JP', 'ja', max_items=20))
+            if keywords_en:
+                all_news_intl.extend(fetch_google_news_intl(keywords_en, 'US', 'en', max_items=20))
+                all_news_intl.extend(fetch_google_news_intl(keywords_en, 'FR', 'fr', max_items=20))
+
+    # 3. 過濾國際新聞
+    topic_index = 0
+    for tid, cfg in TOPICS.items():
+        topic_index += 1
+        LOADING_STATUS['current'] = topic_index
+        LOADING_STATUS['current_topic'] = cfg['name']
+        keywords = cfg.get('keywords', {})
+
+        if isinstance(keywords, list):
+            keywords_en = []
+            keywords_ja = []
+        else:
+            keywords_en = keywords.get('en', [])
+            keywords_ja = keywords.get('ja', [])
+
+        negative_keywords = cfg.get('negative_keywords', [])
+        intl_keywords = keywords_en + keywords_ja
+
+        if not intl_keywords:
+            continue
+
+        # 取得現有國際新聞
+        existing_intl = DATA_STORE['international'].get(tid, [])
+        existing_intl_hashes = {hashlib.md5(item.get('title_original', item['title']).encode()).hexdigest(): item
+                               for item in existing_intl}
+
+        seen_intl = set(existing_intl_hashes.keys())
+        new_intl_items = []
+
+        for item in all_news_intl:
+            content = f"{item['title']} {item['summary']}"
+            if keyword_match(content, intl_keywords, negative_keywords):
+                h = hashlib.md5(item['title'].encode()).hexdigest()
+                if h not in seen_intl:
+                    seen_intl.add(h)
+                    # 翻譯標題
+                    original_title = item['title']
+                    translated_title = translate_with_gemini(original_title)
+                    item['title_original'] = original_title
+                    item['title'] = translated_title
+                    new_intl_items.append(item)
+                    time.sleep(0.5)
+
+        # 合併並排序
+        all_intl_items = new_intl_items + existing_intl
+        all_intl_items.sort(key=lambda x: x['published'], reverse=True)
+
+        # Google News 國際版補充
+        if len(all_intl_items) < 5:
+            for region_name, region_info in GOOGLE_NEWS_INTL_REGIONS.items():
+                if len(all_intl_items) >= 5:
+                    break
+                search_keywords = keywords_ja if region_info['lang'] == 'ja' else keywords_en
+                if not search_keywords:
+                    continue
+
+                google_intl = fetch_google_news_intl(search_keywords, region_info['code'], region_info['lang'], max_items=20)
+                existing_hashes_all = {hashlib.md5(item.get('title_original', item['title']).encode()).hexdigest()
+                                     for item in all_intl_items}
+                for item in google_intl:
+                    if len(all_intl_items) >= 5:
+                        break
+                    content = f"{item['title']} {item['summary']}"
+                    if keyword_match(content, intl_keywords, negative_keywords):
+                        h = hashlib.md5(item['title'].encode()).hexdigest()
+                        if h not in existing_hashes_all:
+                            existing_hashes_all.add(h)
+                            original_title = item['title']
+                            translated_title = translate_with_gemini(original_title)
+                            item['title_original'] = original_title
+                            item['title'] = translated_title
+                            all_intl_items.append(item)
+                            time.sleep(0.5)
+
+            all_intl_items.sort(key=lambda x: x['published'], reverse=True)
+
+        DATA_STORE['international'][tid] = all_intl_items[:10]
+
+        if new_intl_items:
+            print(f"[UPDATE:INTL] {cfg['name']}: 新增 {len(new_intl_items)} 則國際報導")
+
+    DATA_STORE['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
+    LOADING_STATUS['is_loading'] = False
+    save_data_cache()
+    print("[UPDATE:INTL] 完成")
+
 def update_all_summaries():
     print(f"\n[SUMMARY] 開始 AI 摘要...")
     for tid in TOPICS.keys():
@@ -1159,13 +1360,15 @@ def reorder_topics():
 
 def init_scheduler():
     scheduler = BackgroundScheduler(timezone='Asia/Taipei')
-    # 30分鐘更新一次新聞
-    scheduler.add_job(update_topic_news, 'interval', minutes=30)
+    # 國內新聞：整點開始每30分鐘更新 (00, 30)
+    scheduler.add_job(update_domestic_news, 'cron', minute='0,30')
+    # 國際新聞：15分開始每30分鐘更新 (15, 45)
+    scheduler.add_job(update_international_news, 'cron', minute='15,45')
     # AI 摘要：每天 8:00 和 18:00 執行
     scheduler.add_job(update_all_summaries, 'cron', hour=8, minute=0)
     scheduler.add_job(update_all_summaries, 'cron', hour=18, minute=0)
     scheduler.start()
-    print("[SCHEDULER] 排程已啟動 - 新聞每30分鐘, 摘要每天08:00/18:00")
+    print("[SCHEDULER] 排程已啟動 - 國內:00/30分, 國際:15/45分, 摘要:08:00/18:00")
 
 import urllib3
 urllib3.disable_warnings()

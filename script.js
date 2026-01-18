@@ -15,12 +15,40 @@ function updateLastUpdateDisplay(timestamp) {
 
     const date = new Date(timestamp);
     el.textContent = date.toLocaleString('zh-TW', {
+        year: 'numeric',
         month: '2-digit',
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
         hour12: false
     });
+}
+
+// 即時時鐘更新
+function updateRealtimeClock() {
+    const el = document.getElementById('realtime-clock');
+    if (!el) return;
+
+    const now = new Date();
+    el.textContent = now.toLocaleTimeString('zh-TW', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+}
+
+// 全螢幕切換
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.error('[TopicRadar] 無法進入全螢幕:', err);
+        });
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
 }
 
 // 計算摘要更新時間差
@@ -46,7 +74,8 @@ function createTopicCard(topicId, topicData) {
     const card = document.createElement('div');
     card.className = 'topic-card';
     card.dataset.topicId = topicId;
-    card.draggable = true;
+    // 預設不可拖動，只有從 drag-handle 開始拖動時才啟用
+    card.draggable = false;
 
     // 檢查是否有新新聞（國內動態）
     const currentNewsCount = (topicData.news || []).length;
@@ -83,18 +112,23 @@ function createTopicCard(topicId, topicData) {
         `).join('')
         : '<div class="news-item empty">目前沒有相關新聞</div>';
 
-    // 國際新聞列表
+    // 國際新聞列表（含原文標題）
     const intlNewsList = topicData.international || [];
     const intlNewsHtml = intlNewsList.length > 0
-        ? intlNewsList.map(item => `
+        ? intlNewsList.map(item => {
+            const originalTitle = item.title_original ?
+                `<span class="news-title-original">${item.title_original}</span>` : '';
+            return `
             <div class="news-item">
                 <div class="news-meta">
                     <span class="news-time">${item.time || '--:--'}</span>
                     <span class="news-source">${item.source || '未知'}</span>
                 </div>
                 <a href="${item.link || '#'}" target="_blank" class="news-title">${item.title || '無標題'}</a>
+                ${originalTitle}
             </div>
-        `).join('')
+        `;
+        }).join('')
         : '<div class="news-item empty">目前沒有相關國際報導</div>';
 
     // 清理摘要的開頭空行（多重清理）
@@ -153,6 +187,22 @@ function createTopicCard(topicId, topicData) {
     card.addEventListener('dragover', handleDragOver);
     card.addEventListener('dragleave', handleDragLeave);
     card.addEventListener('drop', handleDrop);
+
+    // 只有從 drag-handle 開始拖動時才啟用 draggable
+    const dragHandle = card.querySelector('.drag-handle');
+    if (dragHandle) {
+        dragHandle.addEventListener('mousedown', () => {
+            card.draggable = true;
+        });
+        dragHandle.addEventListener('mouseup', () => {
+            card.draggable = false;
+        });
+    }
+
+    // 當拖動結束後重設 draggable
+    card.addEventListener('dragend', () => {
+        card.draggable = false;
+    });
 
     return card;
 }
@@ -270,6 +320,10 @@ document.addEventListener('DOMContentLoaded', () => {
     loadAllData();
     startLoadingStatusCheck();
 
+    // 即時時鐘啟動
+    updateRealtimeClock();
+    setInterval(updateRealtimeClock, 1000);
+
     // 每 5 分鐘自動刷新
     setInterval(loadAllData, 5 * 60 * 1000);
 });
@@ -318,7 +372,8 @@ async function checkLoadingStatus() {
 window.TopicRadar = {
     refresh: refreshNews,
     refreshSummary: refreshSummary,
-    reload: loadAllData
+    reload: loadAllData,
+    toggleFullscreen: toggleFullscreen
 };
 
 // ============ 拖動排序功能 ============
@@ -368,22 +423,26 @@ function handleDrop(e) {
     if (this !== draggedElement && this.classList.contains('topic-card')) {
         this.classList.remove('drag-over');
 
-        // 交換兩個元素的位置
+        // 真正的交換邏輯（swap）
         const container = document.getElementById('dashboard-container');
-        const allCards = Array.from(container.querySelectorAll('.topic-card[draggable="true"]'));
 
-        const draggedIndex = allCards.indexOf(draggedElement);
-        const targetIndex = allCards.indexOf(this);
+        // 記錄兩個元素的位置
+        const draggedNext = draggedElement.nextSibling;
+        const targetNext = this.nextSibling;
 
-        if (draggedIndex !== -1 && targetIndex !== -1) {
-            // 交換 DOM 位置
-            if (draggedIndex < targetIndex) {
-                // 被拖動的在前面，目標在後面
-                container.insertBefore(this, draggedElement);
-            } else {
-                // 被拖動的在後面，目標在前面
-                container.insertBefore(draggedElement, this);
-            }
+        if (draggedNext === this) {
+            // 相鄰的情況：dragged 在 target 前面
+            container.insertBefore(this, draggedElement);
+        } else if (targetNext === draggedElement) {
+            // 相鄰的情況：target 在 dragged 前面
+            container.insertBefore(draggedElement, this);
+        } else {
+            // 不相鄰的情況：先用 placeholder 佔位
+            const placeholder = document.createElement('div');
+            container.insertBefore(placeholder, this);
+            container.insertBefore(this, draggedNext === null ? null : draggedNext);
+            container.insertBefore(draggedElement, placeholder);
+            container.removeChild(placeholder);
         }
     }
 
@@ -392,7 +451,7 @@ function handleDrop(e) {
 
 // 儲存新的排序到後端
 async function saveNewOrder() {
-    const allCards = Array.from(document.querySelectorAll('.topic-card[draggable="true"]'));
+    const allCards = Array.from(document.querySelectorAll('.topic-card'));
     const newOrder = allCards.map((card, index) => ({
         id: card.dataset.topicId,
         order: index

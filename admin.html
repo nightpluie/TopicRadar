@@ -79,11 +79,8 @@
             text-transform: uppercase;
             color: #00FF88;
             text-shadow:
-                0 0 10px #00FF88,
-                0 0 20px #00FF88,
-                0 0 30px #00FF88,
-                0 0 40px #00FF88,
-                0 0 50px rgba(0, 255, 136, 0.5);
+                0 0 5px rgba(0, 255, 136, 0.4),
+                0 0 10px rgba(0, 255, 136, 0.2);
         }
 
         .header-actions a {
@@ -742,22 +739,34 @@
             if (this !== draggedElement && this.classList.contains('topic-card')) {
                 this.classList.remove('drag-over');
 
-                // 交換兩個元素的位置
+                // 真正的交換邏輯（swap）
                 const container = document.getElementById('topics-container');
-                const allCards = Array.from(container.querySelectorAll('.topic-card[draggable="true"]'));
 
-                const draggedIndex = allCards.indexOf(draggedElement);
-                const targetIndex = allCards.indexOf(this);
+                // 創建一個佔位符來協助交換
+                const placeholder = document.createElement('div');
 
-                if (draggedIndex !== -1 && targetIndex !== -1) {
-                    // 交換 DOM 位置
-                    if (draggedIndex < targetIndex) {
-                        // 被拖動的在前面，目標在後面
-                        container.insertBefore(this, draggedElement);
-                    } else {
-                        // 被拖動的在後面，目標在前面
-                        container.insertBefore(draggedElement, this);
-                    }
+                // 記錄兩個元素的位置
+                const draggedParent = draggedElement.parentNode;
+                const targetParent = this.parentNode;
+                const draggedNext = draggedElement.nextSibling;
+                const targetNext = this.nextSibling;
+
+                // 先把 draggedElement 放到 placeholder 的位置
+                // 然後把 this 放到 draggedElement 原本的位置
+                // 最後把 draggedElement 放到 this 原本的位置
+
+                if (draggedNext === this) {
+                    // 相鄰的情況：dragged 在 target 前面
+                    container.insertBefore(this, draggedElement);
+                } else if (targetNext === draggedElement) {
+                    // 相鄰的情況：target 在 dragged 前面
+                    container.insertBefore(draggedElement, this);
+                } else {
+                    // 不相鄰的情況：先用 placeholder 佔位
+                    container.insertBefore(placeholder, this);
+                    container.insertBefore(this, draggedNext === null ? null : draggedNext);
+                    container.insertBefore(draggedElement, placeholder);
+                    container.removeChild(placeholder);
                 }
             }
 
@@ -779,7 +788,7 @@
 
         // 儲存新的排序到後端
         async function saveNewOrder() {
-            const allCards = Array.from(document.querySelectorAll('.topic-card[draggable="true"]'));
+            const allCards = Array.from(document.querySelectorAll('.topic-card'));
             const newOrder = allCards.map((card, index) => ({
                 id: card.dataset.topicId,
                 order: index

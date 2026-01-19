@@ -1330,8 +1330,13 @@ def update_topic(tid):
     if 'negative_keywords' in data:
         TOPICS[tid]['negative_keywords'] = data['negative_keywords']
     save_topics_config()
-    update_topic_news()
-    return jsonify({'status': 'ok'})
+    
+    # 在背景線程執行新聞更新，避免請求超時
+    import threading
+    update_thread = threading.Thread(target=update_topic_news, daemon=True)
+    update_thread.start()
+    
+    return jsonify({'status': 'ok', 'message': '關鍵字已儲存，新聞正在背景更新'})
 
 @app.route('/api/admin/topics/<tid>', methods=['DELETE'])
 def delete_topic(tid):

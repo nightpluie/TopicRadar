@@ -51,6 +51,30 @@ function toggleFullscreen() {
     }
 }
 
+// 更新全螢幕按鈕圖示
+function updateFullscreenIcon() {
+    const btn = document.getElementById('fullscreen-btn');
+    if (!btn) return;
+
+    const expandIcon = btn.querySelector('.expand-icon');
+    const compressIcon = btn.querySelector('.compress-icon');
+
+    if (document.fullscreenElement) {
+        // 全螢幕狀態：顯示收縮圖示
+        if (expandIcon) expandIcon.style.display = 'none';
+        if (compressIcon) compressIcon.style.display = 'block';
+        btn.title = '退出全螢幕';
+    } else {
+        // 非全螢幕狀態：顯示擴展圖示
+        if (expandIcon) expandIcon.style.display = 'block';
+        if (compressIcon) compressIcon.style.display = 'none';
+        btn.title = '全螢幕模式';
+    }
+}
+
+// 監聽全螢幕狀態變化
+document.addEventListener('fullscreenchange', updateFullscreenIcon);
+
 // 計算摘要更新時間差
 function getUpdateBadgeText(timestamp) {
     if (!timestamp) return '等待更新';

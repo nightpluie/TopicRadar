@@ -1173,9 +1173,11 @@ def get_all():
         now = datetime.now(TAIPEI_TZ)
         for n in news[:10]:
             dt = n['published']
-            # 確保 dt 有時區資訊
+            # 確保 dt 有時區資訊，並統一轉換到台北時區
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=TAIPEI_TZ)
+            else:
+                dt = dt.astimezone(TAIPEI_TZ)
 
             # 根據日期決定顯示格式
             is_date_only = n.get('is_date_only', False)
@@ -1201,9 +1203,11 @@ def get_all():
         fmt_intl_news = []
         for n in intl_news[:10]:
             dt = n['published']
-            # 確保 dt 有時區資訊
+            # 確保 dt 有時區資訊，並統一轉換到台北時區
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=TAIPEI_TZ)
+            else:
+                dt = dt.astimezone(TAIPEI_TZ)
 
             # 根據日期決定顯示格式
             if dt.date() == now.date():

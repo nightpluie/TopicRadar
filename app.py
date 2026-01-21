@@ -1031,25 +1031,34 @@ def update_topic_news():
         all_news_intl.extend(fetch_rss(url, name, max_items=50))
 
     # 2.5 抓取 Google News 國際版新聞（日本、美國、法國）
-    # 為每個專題的國際關鍵字抓取對應國家的新聞
-    google_news_intl = []
+    # 2.5 抓取 Google News 國際版新聞（優化：去重搜尋 + 支援韓文）
+    # 先收集所有需要搜尋的唯一關鍵字組合，避免重複抓取
+    unique_searches = set() # (region, lang, keyword)
+
     for tid, cfg in topics_to_update.items():
         keywords = cfg.get('keywords', {})
         if isinstance(keywords, dict):
             keywords_en = keywords.get('en', [])
             keywords_ja = keywords.get('ja', [])
+            keywords_ko = keywords.get('ko', [])
 
-            # 日本 Google News（使用日文關鍵字）
-            if keywords_ja:
-                google_news_intl.extend(fetch_google_news_intl(keywords_ja, 'JP', 'ja', max_items=20))
+            # 取第一個關鍵字作為代表進行搜尋
+            if keywords_ja: unique_searches.add(('JP', 'ja', keywords_ja[0]))
+            if keywords_en: 
+                unique_searches.add(('US', 'en', keywords_en[0]))
+                unique_searches.add(('FR', 'fr', keywords_en[0]))
+            if keywords_ko: unique_searches.add(('KR', 'ko', keywords_ko[0]))
 
-            # 美國 Google News（使用英文關鍵字）
-            if keywords_en:
-                google_news_intl.extend(fetch_google_news_intl(keywords_en, 'US', 'en', max_items=20))
-
-            # 法國 Google News（使用英文關鍵字）
-            if keywords_en:
-                google_news_intl.extend(fetch_google_news_intl(keywords_en, 'FR', 'fr', max_items=20))
+    print(f"[UPDATE] 彙整後需執行 {len(unique_searches)} 次 Google News 搜尋")
+    
+    google_news_intl = []
+    # 執行去重後的搜尋
+    for region, lang, keyword in unique_searches:
+        try:
+            google_news_intl.extend(fetch_google_news_intl([keyword], region, lang, max_items=20))
+            time.sleep(1) # 溫柔一點
+        except Exception as e:
+            print(f"[UPDATE] Google Search error ({region}/{keyword}): {e}")
 
     all_news_intl.extend(google_news_intl)
 

@@ -2376,15 +2376,16 @@ def update_user_role(user_id):
 
 def init_scheduler():
     scheduler = BackgroundScheduler(timezone='Asia/Taipei')
-    # 國內新聞：整點開始每30分鐘更新 (00, 30)
-    scheduler.add_job(update_domestic_news, 'cron', minute='0,30')
-    # 國際新聞：15分開始每30分鐘更新 (15, 45)
-    scheduler.add_job(update_international_news, 'cron', minute='15,45')
-    # AI 摘要：每天 8:00 和 18:00 執行
-    scheduler.add_job(update_all_summaries, 'cron', hour=8, minute=0)
-    scheduler.add_job(update_all_summaries, 'cron', hour=18, minute=0)
+    # 新聞更新排程（每小時一次，錯開時間）
+    scheduler.add_job(update_domestic_news, 'cron', minute='0')
+    scheduler.add_job(update_international_news, 'cron', minute='30')
+    
+    # 摘要生成排程（每天 08:00, 12:00, 18:00）
+    scheduler.add_job(update_all_summaries, 'cron', hour=8, minute=15)
+    scheduler.add_job(update_all_summaries, 'cron', hour=12, minute=15)
+    scheduler.add_job(update_all_summaries, 'cron', hour=18, minute=15)
     scheduler.start()
-    print("[SCHEDULER] 排程已啟動 - 國內:00/30分, 國際:15/45分, 摘要:08:00/18:00")
+    print("[SCHEDULER] 排程已啟動 - 國內:每小時0分, 國際:每小時30分, 摘要:08:15/12:15/18:15")
 
 import urllib3
 urllib3.disable_warnings()

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Topic Radar (專題雷達) is an AI-powered news monitoring dashboard for investigative journalists. It tracks abstract topics by scraping RSS feeds, filtering with multilingual keywords (ZH/EN/JA), translating international news, and generating AI summaries.
 
-**Live Site**: https://topicradar.bonnnews.net (hosted on Render)
+**Live Site**: https://topicradar.bonnews.net (hosted on Render)
 
 **Tech Stack**:
 - Backend: Python Flask, APScheduler
@@ -150,7 +150,7 @@ Uses MD5 hash of news titles to prevent duplicates (app.py:478, 504, 511, 542). 
 
 **URL**: https://topicradar.onrender.com
 
-**Custom Domain**: topicradar.bonnnews.net
+**Custom Domain**: topicradar.bonnews.net
 
 **Files**:
 - `requirements.txt` - Dependencies

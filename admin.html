@@ -393,7 +393,8 @@
             <h1>WISE情報中心｜設定</h1>
             <div class="header-actions">
                 <span id="user-info" style="margin-right: 20px; color: var(--text-secondary); font-size: 14px;"></span>
-                <button id="logout-btn" class="btn btn-secondary" style="margin-right: 10px; padding: 6px 14px; font-size: 13px;">登出</button>
+                <button id="logout-btn" class="btn btn-secondary"
+                    style="margin-right: 10px; padding: 6px 14px; font-size: 13px;">登出</button>
                 <a href="/">返回前台</a>
             </div>
         </header>
@@ -415,10 +416,13 @@
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <!-- 邀請碼管理 -->
-                <div style="background: var(--bg-panel); border: 1px solid var(--border); padding: 20px; border-radius: 2px;">
-                    <h3 style="font-size: 16px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <div
+                    style="background: var(--bg-panel); border: 1px solid var(--border); padding: 20px; border-radius: 2px;">
+                    <h3
+                        style="font-size: 16px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
                         📧 邀請碼管理
-                        <button class="btn btn-primary" style="padding: 6px 12px; font-size: 13px;" onclick="createInviteCode()">生成新邀請碼</button>
+                        <button class="btn btn-primary" style="padding: 6px 12px; font-size: 13px;"
+                            onclick="createInviteCode()">生成新邀請碼</button>
                     </h3>
                     <div id="invite-codes-list" style="max-height: 300px; overflow-y: auto;">
                         <!-- 邀請碼列表 -->
@@ -426,7 +430,8 @@
                 </div>
 
                 <!-- 使用者管理 -->
-                <div style="background: var(--bg-panel); border: 1px solid var(--border); padding: 20px; border-radius: 2px;">
+                <div
+                    style="background: var(--bg-panel); border: 1px solid var(--border); padding: 20px; border-radius: 2px;">
                     <h3 style="font-size: 16px; margin-bottom: 15px;">👥 使用者管理</h3>
                     <div id="users-list" style="max-height: 300px; overflow-y: auto;">
                         <!-- 使用者列表 -->
@@ -1177,7 +1182,11 @@
 
         async function checkLoadingStatus() {
             try {
-                const response = await fetch(`${API_BASE}/api/loading-status`);
+                const response = await fetch(`${API_BASE}/api/loading-status`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
                 const status = await response.json();
                 const statusEl = document.getElementById('loading-status');
 

@@ -16,6 +16,8 @@
                 <span class="logo-text">WISE情報中心</span>
             </div>
             <div class="status-info">
+                <span class="user-info" id="user-info" style="color: var(--accent-primary); font-weight: 500;"></span>
+                <span class="separator" id="user-separator" style="display: none;">|</span>
                 <span class="loading-status">狀態: <span id="loading-status">檢查中...</span></span>
                 <span class="separator">|</span>
                 <span class="update-time">最後更新: <span id="last-update">--</span></span>
@@ -28,6 +30,7 @@
                 <button class="btn-refresh" onclick="TopicRadar.refresh()" title="更新新聞">更新動態</button>
                 <button class="btn-refresh-summary" onclick="TopicRadar.refreshSummary()" title="更新摘要">更新摘要</button>
                 <a href="/admin" class="settings-link" title="後台設定">設定</a>
+                <button class="btn-logout" id="logout-btn" onclick="TopicRadar.logout()" title="登出" style="display: none;">登出</button>
                 <button class="btn-fullscreen" id="fullscreen-btn" onclick="TopicRadar.toggleFullscreen()"
                     title="全螢幕模式">
                     <!-- 擴展圖示（非全螢幕時顯示） -->

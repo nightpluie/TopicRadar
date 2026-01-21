@@ -231,6 +231,24 @@ body {
     color: var(--color-radar);
 }
 
+/* 登出按鈕 */
+.btn-logout {
+    background: var(--border);
+    color: var(--text-primary);
+    border: none;
+    padding: 7px 16px;
+    border-radius: 2px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: var(--font-sans);
+}
+
+.btn-logout:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
 /* 全螢幕按鈕 */
 .btn-fullscreen {
     background: transparent;

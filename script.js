@@ -231,12 +231,31 @@ function createTopicCard(topicId, topicData) {
     return card;
 }
 
+// 取得 token
+function getAuthToken() {
+    return localStorage.getItem('auth_token') || '';
+}
+
 // 載入所有資料並動態生成專題卡片
 async function loadAllData() {
     const container = document.getElementById('dashboard-container');
+    const token = getAuthToken();
 
     try {
-        const response = await fetch(`${API_BASE}/api/all`);
+        const headers = {};
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`${API_BASE}/api/all`, { headers });
+
+        // 如果未登入（401），重定向到登入頁
+        if (response.status === 401) {
+            console.log('[TopicRadar] 未登入，重定向到登入頁...');
+            window.location.href = '/login';
+            return;
+        }
+
         if (!response.ok) throw new Error('API 錯誤');
 
         const data = await response.json();
@@ -341,6 +360,7 @@ async function refreshSummary() {
 // 初始載入
 document.addEventListener('DOMContentLoaded', () => {
     console.log('[TopicRadar] 專題雷達啟動中...');
+    displayUserInfo();
     loadAllData();
     startLoadingStatusCheck();
 
@@ -364,7 +384,13 @@ let lastLoadingStatus = null;
 
 async function checkLoadingStatus() {
     try {
-        const response = await fetch(`${API_BASE}/api/loading-status`);
+        const token = getAuthToken();
+        const headers = {};
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`${API_BASE}/api/loading-status`, { headers });
         const status = await response.json();
         const statusEl = document.getElementById('loading-status');
         if (!statusEl) return;
@@ -383,7 +409,7 @@ async function checkLoadingStatus() {
                 lastLoadingStatus = 'loaded';
             }
         } else {
-            statusEl.textContent = '等待載入';
+            statusEl.textContent = '尚無專題';
             statusEl.className = '';
             lastLoadingStatus = null;
         }
@@ -392,12 +418,52 @@ async function checkLoadingStatus() {
     }
 }
 
+// 登出功能
+function logout() {
+    // 清除 token
+    localStorage.removeItem('auth_token');
+
+    // 重定向到登入頁
+    window.location.href = '/login';
+}
+
+// 顯示使用者資訊
+function displayUserInfo() {
+    const token = getAuthToken();
+    if (token) {
+        try {
+            // 解析 JWT token 取得使用者資訊
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            const email = payload.email || payload.user?.email || '使用者';
+
+            // 顯示使用者資訊
+            const userInfoEl = document.getElementById('user-info');
+            const userSeparatorEl = document.getElementById('user-separator');
+            const logoutBtn = document.getElementById('logout-btn');
+
+            if (userInfoEl) {
+                userInfoEl.textContent = email;
+                userInfoEl.style.display = 'inline';
+            }
+            if (userSeparatorEl) {
+                userSeparatorEl.style.display = 'inline';
+            }
+            if (logoutBtn) {
+                logoutBtn.style.display = 'inline-block';
+            }
+        } catch (e) {
+            console.error('[TopicRadar] 無法解析 token:', e);
+        }
+    }
+}
+
 // 暴露給 console 和按鈕使用
 window.TopicRadar = {
     refresh: refreshNews,
     refreshSummary: refreshSummary,
     reload: loadAllData,
-    toggleFullscreen: toggleFullscreen
+    toggleFullscreen: toggleFullscreen,
+    logout: logout
 };
 
 // ============ 拖動排序功能 ============

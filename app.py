@@ -1380,7 +1380,13 @@ def update_domestic_news():
 
             all_items.sort(key=lambda x: x['published'], reverse=True)
 
-        DATA_STORE['topics'][tid] = all_items[:10]
+        if AUTH_ENABLED and 'user_id' in cfg:
+            owner_id = cfg['user_id']
+            # 確保該使用者的資料結構存在
+            if owner_id in DATA_STORE and 'topics' in DATA_STORE[owner_id]:
+                DATA_STORE[owner_id]['topics'][tid] = all_items[:10]
+        else:
+            DATA_STORE['topics'][tid] = all_items[:10]
 
         if new_items:
             print(f"[UPDATE:DOMESTIC] {cfg['name']}: 新增 {len(new_items)} 則新聞")
@@ -1524,7 +1530,13 @@ def update_international_news():
 
             all_intl_items.sort(key=lambda x: x['published'], reverse=True)
 
-        DATA_STORE['international'][tid] = all_intl_items[:10]
+            # 保持最新的 10 則
+            if AUTH_ENABLED and 'user_id' in cfg:
+                owner_id = cfg['user_id']
+                if owner_id in DATA_STORE and 'international' in DATA_STORE[owner_id]:
+                    DATA_STORE[owner_id]['international'][tid] = all_intl_items[:10]
+            else:
+                DATA_STORE['international'][tid] = all_intl_items[:10]
 
         if new_intl_items:
             print(f"[UPDATE:INTL] {cfg['name']}: 新增 {len(new_intl_items)} 則國際報導")

@@ -10,7 +10,7 @@ import feedparser
 import requests
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
@@ -86,6 +86,7 @@ DATA_STORE = {
     'international': {},    # 每個專題的國際新聞列表（翻譯後）
     'summaries': {},        # 每個專題的 AI 摘要
     'last_update': None,
+    'topic_owners': {},     # 專題擁有者對應表 {topic_id: user_id}
 }
 
 # 載入進度狀態
@@ -105,44 +106,102 @@ DATA_CACHE_FILE = 'data_cache.json'
 # ============ 資料快取管理 ============
 
 def save_data_cache():
-    """儲存資料到快取檔案（會覆蓋舊檔）"""
+    """儲存資料到快取檔案（按使用者分組）"""
     try:
-        # 準備要序列化的資料（處理 datetime 物件）
-        cache_data = {
-            'topics': {},
-            'international': {},
-            'summaries': DATA_STORE['summaries'],
-            'last_update': DATA_STORE['last_update']
-        }
+        # 在認證模式下，按使用者分組儲存
+        if AUTH_ENABLED:
+            # 按使用者分組資料
+            user_data = {}  # {user_id: {topics: {}, international: {}, summaries: {}}}
+            topic_owners = DATA_STORE.get('topic_owners', {})
 
-        # 處理新聞資料（將 datetime 轉成字串）
-        for tid, news_list in DATA_STORE['topics'].items():
-            cache_data['topics'][tid] = []
-            for news in news_list:
-                news_copy = news.copy()
-                if 'published' in news_copy and isinstance(news_copy['published'], datetime):
-                    news_copy['published'] = news_copy['published'].isoformat()
-                cache_data['topics'][tid].append(news_copy)
+            # 遍歷所有專題，按擁有者分組
+            for tid in set(list(DATA_STORE['topics'].keys()) +
+                          list(DATA_STORE['international'].keys()) +
+                          list(DATA_STORE['summaries'].keys())):
 
-        for tid, news_list in DATA_STORE['international'].items():
-            cache_data['international'][tid] = []
-            for news in news_list:
-                news_copy = news.copy()
-                if 'published' in news_copy and isinstance(news_copy['published'], datetime):
-                    news_copy['published'] = news_copy['published'].isoformat()
-                cache_data['international'][tid].append(news_copy)
+                user_id = topic_owners.get(tid, 'unknown')
 
-        # 寫入檔案（覆蓋）
-        with open(DATA_CACHE_FILE, 'w', encoding='utf-8') as f:
-            json.dump(cache_data, f, ensure_ascii=False, indent=2)
+                if user_id not in user_data:
+                    user_data[user_id] = {
+                        'topics': {},
+                        'international': {},
+                        'summaries': {},
+                        'last_update': DATA_STORE['last_update']
+                    }
 
-        print(f"[CACHE] 資料已儲存到 {DATA_CACHE_FILE}")
+                # 台灣新聞
+                if tid in DATA_STORE['topics']:
+                    news_list = []
+                    for news in DATA_STORE['topics'][tid]:
+                        news_copy = news.copy()
+                        if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                            news_copy['published'] = news_copy['published'].isoformat()
+                        news_list.append(news_copy)
+                    user_data[user_id]['topics'][tid] = news_list
+
+                # 國際新聞
+                if tid in DATA_STORE['international']:
+                    news_list = []
+                    for news in DATA_STORE['international'][tid]:
+                        news_copy = news.copy()
+                        if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                            news_copy['published'] = news_copy['published'].isoformat()
+                        news_list.append(news_copy)
+                    user_data[user_id]['international'][tid] = news_list
+
+                # 摘要
+                if tid in DATA_STORE['summaries']:
+                    user_data[user_id]['summaries'][tid] = DATA_STORE['summaries'][tid]
+
+            # 儲存結構化快取
+            cache_data = {
+                'version': '2.0',  # 多使用者版本
+                'users': user_data,
+                'topic_owners': topic_owners
+            }
+
+            with open(DATA_CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+
+            user_count = len(user_data)
+            topic_count = len(topic_owners)
+            print(f"[CACHE] 已儲存 {user_count} 個使用者的 {topic_count} 個專題資料")
+
+        else:
+            # 非認證模式：使用舊格式（向後相容）
+            cache_data = {
+                'topics': {},
+                'international': {},
+                'summaries': DATA_STORE['summaries'],
+                'last_update': DATA_STORE['last_update']
+            }
+
+            for tid, news_list in DATA_STORE['topics'].items():
+                cache_data['topics'][tid] = []
+                for news in news_list:
+                    news_copy = news.copy()
+                    if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                        news_copy['published'] = news_copy['published'].isoformat()
+                    cache_data['topics'][tid].append(news_copy)
+
+            for tid, news_list in DATA_STORE['international'].items():
+                cache_data['international'][tid] = []
+                for news in news_list:
+                    news_copy = news.copy()
+                    if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                        news_copy['published'] = news_copy['published'].isoformat()
+                    cache_data['international'][tid].append(news_copy)
+
+            with open(DATA_CACHE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+
+            print(f"[CACHE] 資料已儲存到 {DATA_CACHE_FILE}")
 
     except Exception as e:
         print(f"[CACHE] 儲存失敗: {e}")
 
 def load_data_cache():
-    """從快取檔案載入資料"""
+    """從快取檔案載入資料（支援新舊格式）"""
     global DATA_STORE
 
     if not os.path.exists(DATA_CACHE_FILE):
@@ -153,30 +212,86 @@ def load_data_cache():
         with open(DATA_CACHE_FILE, 'r', encoding='utf-8') as f:
             cache_data = json.load(f)
 
-        # 載入摘要和最後更新時間
-        DATA_STORE['summaries'] = cache_data.get('summaries', {})
-        DATA_STORE['last_update'] = cache_data.get('last_update')
+        # 檢查快取版本
+        cache_version = cache_data.get('version', '1.0')
 
-        # 載入新聞資料（將字串轉回 datetime）
-        DATA_STORE['topics'] = {}
-        for tid, news_list in cache_data.get('topics', {}).items():
-            DATA_STORE['topics'][tid] = []
-            for news in news_list:
-                news_copy = news.copy()
-                if 'published' in news_copy and isinstance(news_copy['published'], str):
-                    news_copy['published'] = datetime.fromisoformat(news_copy['published'])
-                DATA_STORE['topics'][tid].append(news_copy)
+        if cache_version == '2.0':
+            # 新格式：多使用者分組
+            print(f"[CACHE] 載入多使用者快取（v2.0）...")
 
-        DATA_STORE['international'] = {}
-        for tid, news_list in cache_data.get('international', {}).items():
-            DATA_STORE['international'][tid] = []
-            for news in news_list:
-                news_copy = news.copy()
-                if 'published' in news_copy and isinstance(news_copy['published'], str):
-                    news_copy['published'] = datetime.fromisoformat(news_copy['published'])
-                DATA_STORE['international'][tid].append(news_copy)
+            # 載入專題擁有者對應表
+            DATA_STORE['topic_owners'] = cache_data.get('topic_owners', {})
 
-        print(f"[CACHE] 從快取載入了 {len(DATA_STORE['topics'])} 個專題的資料")
+            # 初始化
+            DATA_STORE['topics'] = {}
+            DATA_STORE['international'] = {}
+            DATA_STORE['summaries'] = {}
+            DATA_STORE['last_update'] = None
+
+            # 合併所有使用者的資料
+            user_data = cache_data.get('users', {})
+            for user_id, user_cache in user_data.items():
+                # 載入台灣新聞
+                for tid, news_list in user_cache.get('topics', {}).items():
+                    DATA_STORE['topics'][tid] = []
+                    for news in news_list:
+                        news_copy = news.copy()
+                        if 'published' in news_copy and isinstance(news_copy['published'], str):
+                            news_copy['published'] = datetime.fromisoformat(news_copy['published'])
+                        DATA_STORE['topics'][tid].append(news_copy)
+
+                # 載入國際新聞
+                for tid, news_list in user_cache.get('international', {}).items():
+                    DATA_STORE['international'][tid] = []
+                    for news in news_list:
+                        news_copy = news.copy()
+                        if 'published' in news_copy and isinstance(news_copy['published'], str):
+                            news_copy['published'] = datetime.fromisoformat(news_copy['published'])
+                        DATA_STORE['international'][tid].append(news_copy)
+
+                # 載入摘要
+                for tid, summary in user_cache.get('summaries', {}).items():
+                    DATA_STORE['summaries'][tid] = summary
+
+                # 更新最後更新時間（使用最新的）
+                user_last_update = user_cache.get('last_update')
+                if user_last_update:
+                    if not DATA_STORE['last_update'] or user_last_update > DATA_STORE['last_update']:
+                        DATA_STORE['last_update'] = user_last_update
+
+            user_count = len(user_data)
+            topic_count = len(DATA_STORE['topics'])
+            print(f"[CACHE] 從快取載入了 {user_count} 個使用者的 {topic_count} 個專題資料")
+
+        else:
+            # 舊格式：向後相容
+            print(f"[CACHE] 載入舊格式快取（v1.0）...")
+
+            # 載入摘要和最後更新時間
+            DATA_STORE['summaries'] = cache_data.get('summaries', {})
+            DATA_STORE['last_update'] = cache_data.get('last_update')
+            DATA_STORE['topic_owners'] = {}  # 舊格式沒有擁有者資訊
+
+            # 載入新聞資料（將字串轉回 datetime）
+            DATA_STORE['topics'] = {}
+            for tid, news_list in cache_data.get('topics', {}).items():
+                DATA_STORE['topics'][tid] = []
+                for news in news_list:
+                    news_copy = news.copy()
+                    if 'published' in news_copy and isinstance(news_copy['published'], str):
+                        news_copy['published'] = datetime.fromisoformat(news_copy['published'])
+                    DATA_STORE['topics'][tid].append(news_copy)
+
+            DATA_STORE['international'] = {}
+            for tid, news_list in cache_data.get('international', {}).items():
+                DATA_STORE['international'][tid] = []
+                for news in news_list:
+                    news_copy = news.copy()
+                    if 'published' in news_copy and isinstance(news_copy['published'], str):
+                        news_copy['published'] = datetime.fromisoformat(news_copy['published'])
+                    DATA_STORE['international'][tid].append(news_copy)
+
+            print(f"[CACHE] 從快取載入了 {len(DATA_STORE['topics'])} 個專題的資料")
 
     except Exception as e:
         print(f"[CACHE] 載入快取失敗: {e}")
@@ -724,9 +839,113 @@ def update_single_topic_news(topic_id):
 
     print(f"[UPDATE] {cfg['name']} 更新完成")
 
+def load_user_data(user_id):
+    """按需載入使用者的專題資料"""
+    global DATA_STORE
+
+    # 檢查是否已經載入
+    if user_id in DATA_STORE:
+        return True
+
+    print(f"[LOAD] 開始載入使用者 {user_id} 的資料...")
+
+    # 初始化使用者的資料結構
+    DATA_STORE[user_id] = {
+        'topics': {},
+        'international': {},
+        'summaries': {},
+        'last_update': datetime.now(TAIPEI_TZ).isoformat()
+    }
+
+    try:
+        # 取得使用者的專題
+        user_topics = auth.get_user_topics(user_id)
+
+        if not user_topics:
+            print(f"[LOAD] 使用者 {user_id} 沒有專題")
+            return True
+
+        # 轉換為更新格式
+        topics_to_load = {}
+        for topic in user_topics:
+            topics_to_load[topic['id']] = {
+                'name': topic['name'],
+                'keywords': topic['keywords'],
+                'negative_keywords': topic.get('negative_keywords', []),
+                'icon': topic.get('icon', '📌'),
+                'user_id': user_id
+            }
+
+        print(f"[LOAD] 為使用者 {user_id} 載入 {len(topics_to_load)} 個專題的新聞...")
+
+        # 抓取 RSS 新聞
+        all_news_tw = []
+        for name, url in RSS_SOURCES_TW.items():
+            all_news_tw.extend(fetch_rss(url, name, max_items=50))
+
+        all_news_intl = []
+        for name, url in RSS_SOURCES_INTL.items():
+            all_news_intl.extend(fetch_rss(url, name, max_items=50))
+
+        # 為每個專題過濾新聞
+        for tid, cfg in topics_to_load.items():
+            # 過濾台灣新聞
+            filtered_tw = filter_news_by_keywords(all_news_tw, cfg)
+            DATA_STORE[user_id]['topics'][tid] = filtered_tw[:10]
+
+            # 過濾國際新聞
+            filtered_intl = filter_news_by_keywords(all_news_intl, cfg, is_international=True)
+            # 翻譯標題
+            for news in filtered_intl:
+                if GEMINI_API_KEY and 'title_original' not in news:
+                    news['title_original'] = news['title']
+                    news['title'] = translate_with_gemini(news['title'])
+            DATA_STORE[user_id]['international'][tid] = filtered_intl[:10]
+
+        # 儲存快取
+        save_data_cache()
+
+        print(f"[LOAD] 使用者 {user_id} 的資料載入完成")
+        return True
+
+    except Exception as e:
+        print(f"[LOAD] 載入使用者 {user_id} 資料失敗: {e}")
+        return False
+
 def update_topic_news():
     global LOADING_STATUS
-    total_topics = len(TOPICS)
+
+    # 在認證模式下，只更新有快取的使用者專題（按需載入策略）
+    if AUTH_ENABLED:
+        # 從快取中取得已載入的使用者 ID
+        cached_user_ids = [uid for uid in DATA_STORE.keys() if uid not in ['topics', 'international', 'summaries', 'last_update']]
+
+        if not cached_user_ids:
+            print(f"[UPDATE] 沒有使用者快取，跳過更新")
+            return
+
+        # 只載入這些使用者的專題
+        topics_to_update = {}
+        for user_id in cached_user_ids:
+            try:
+                user_topics = auth.get_user_topics(user_id)
+                for topic in user_topics:
+                    topics_to_update[topic['id']] = {
+                        'name': topic['name'],
+                        'keywords': topic['keywords'],
+                        'negative_keywords': topic.get('negative_keywords', []),
+                        'icon': topic.get('icon', '📌'),
+                        'order': topic.get('order', 999),
+                        'user_id': topic['user_id']
+                    }
+            except Exception as e:
+                print(f"[UPDATE] 無法讀取使用者 {user_id} 的專題: {e}")
+
+        print(f"[UPDATE] 更新 {len(cached_user_ids)} 個活躍使用者的 {len(topics_to_update)} 個專題")
+    else:
+        topics_to_update = TOPICS
+
+    total_topics = len(topics_to_update)
     LOADING_STATUS = {
         'is_loading': True,
         'current': 0,
@@ -749,7 +968,7 @@ def update_topic_news():
     # 2.5 抓取 Google News 國際版新聞（日本、美國、法國）
     # 為每個專題的國際關鍵字抓取對應國家的新聞
     google_news_intl = []
-    for tid, cfg in TOPICS.items():
+    for tid, cfg in topics_to_update.items():
         keywords = cfg.get('keywords', {})
         if isinstance(keywords, dict):
             keywords_en = keywords.get('en', [])
@@ -771,10 +990,15 @@ def update_topic_news():
 
     # 3. 過濾台灣新聞和國際新聞
     topic_index = 0
-    for tid, cfg in TOPICS.items():
+    for tid, cfg in topics_to_update.items():
         topic_index += 1
         LOADING_STATUS['current'] = topic_index
         LOADING_STATUS['current_topic'] = cfg['name']
+
+        # 記錄專題擁有者（在認證模式下）
+        if AUTH_ENABLED and 'user_id' in cfg:
+            DATA_STORE['topic_owners'][tid] = cfg['user_id']
+
         keywords = cfg.get('keywords', {})
 
         # 處理舊格式（純列表）vs 新格式（字典）
@@ -937,7 +1161,29 @@ def update_topic_news():
 def update_domestic_news():
     """只更新國內新聞（整點開始每30分鐘）"""
     global LOADING_STATUS
-    total_topics = len(TOPICS)
+
+    # 在認證模式下，從 Supabase 讀取所有使用者的專題
+    if AUTH_ENABLED:
+        try:
+            all_user_topics = auth.get_all_topics_admin()
+            topics_to_update = {}
+            for topic in all_user_topics:
+                topics_to_update[topic['id']] = {
+                    'name': topic['name'],
+                    'keywords': topic['keywords'],
+                    'negative_keywords': topic.get('negative_keywords', []),
+                    'icon': topic.get('icon', '📌'),
+                    'order': topic.get('order', 999),
+                    'user_id': topic['user_id']
+                }
+            print(f"[UPDATE:DOMESTIC] 從 Supabase 載入了 {len(topics_to_update)} 個使用者專題")
+        except Exception as e:
+            print(f"[UPDATE:DOMESTIC] 無法從 Supabase 讀取專題，使用本地設定: {e}")
+            topics_to_update = TOPICS
+    else:
+        topics_to_update = TOPICS
+
+    total_topics = len(topics_to_update)
     LOADING_STATUS = {
         'is_loading': True,
         'current': 0,
@@ -954,10 +1200,15 @@ def update_domestic_news():
 
     # 2. 過濾台灣新聞
     topic_index = 0
-    for tid, cfg in TOPICS.items():
+    for tid, cfg in topics_to_update.items():
         topic_index += 1
         LOADING_STATUS['current'] = topic_index
         LOADING_STATUS['current_topic'] = cfg['name']
+
+        # 記錄專題擁有者（在認證模式下）
+        if AUTH_ENABLED and 'user_id' in cfg:
+            DATA_STORE['topic_owners'][tid] = cfg['user_id']
+
         keywords = cfg.get('keywords', {})
 
         # 處理舊格式 vs 新格式
@@ -1021,7 +1272,29 @@ def update_domestic_news():
 def update_international_news():
     """只更新國際新聞（15分開始每30分鐘）"""
     global LOADING_STATUS
-    total_topics = len(TOPICS)
+
+    # 在認證模式下，從 Supabase 讀取所有使用者的專題
+    if AUTH_ENABLED:
+        try:
+            all_user_topics = auth.get_all_topics_admin()
+            topics_to_update = {}
+            for topic in all_user_topics:
+                topics_to_update[topic['id']] = {
+                    'name': topic['name'],
+                    'keywords': topic['keywords'],
+                    'negative_keywords': topic.get('negative_keywords', []),
+                    'icon': topic.get('icon', '📌'),
+                    'order': topic.get('order', 999),
+                    'user_id': topic['user_id']
+                }
+            print(f"[UPDATE:INTL] 從 Supabase 載入了 {len(topics_to_update)} 個使用者專題")
+        except Exception as e:
+            print(f"[UPDATE:INTL] 無法從 Supabase 讀取專題，使用本地設定: {e}")
+            topics_to_update = TOPICS
+    else:
+        topics_to_update = TOPICS
+
+    total_topics = len(topics_to_update)
     LOADING_STATUS = {
         'is_loading': True,
         'current': 0,
@@ -1037,7 +1310,7 @@ def update_international_news():
         all_news_intl.extend(fetch_rss(url, name, max_items=50))
 
     # 2. 抓取 Google News 國際版
-    for tid, cfg in TOPICS.items():
+    for tid, cfg in topics_to_update.items():
         keywords = cfg.get('keywords', {})
         if isinstance(keywords, dict):
             keywords_en = keywords.get('en', [])
@@ -1051,10 +1324,15 @@ def update_international_news():
 
     # 3. 過濾國際新聞
     topic_index = 0
-    for tid, cfg in TOPICS.items():
+    for tid, cfg in topics_to_update.items():
         topic_index += 1
         LOADING_STATUS['current'] = topic_index
         LOADING_STATUS['current_topic'] = cfg['name']
+
+        # 記錄專題擁有者（在認證模式下）
+        if AUTH_ENABLED and 'user_id' in cfg:
+            DATA_STORE['topic_owners'][tid] = cfg['user_id']
+
         keywords = cfg.get('keywords', {})
 
         if isinstance(keywords, list):
@@ -1137,7 +1415,38 @@ def update_international_news():
 
 def update_all_summaries():
     print(f"\n[SUMMARY] 開始 AI 摘要...")
-    for tid in TOPICS.keys():
+
+    # 在認證模式下，只更新有快取的使用者專題（按需載入策略）
+    if AUTH_ENABLED:
+        # 從快取中取得已載入的使用者 ID
+        cached_user_ids = [uid for uid in DATA_STORE.keys() if uid not in ['topics', 'international', 'summaries', 'last_update', 'topic_owners']]
+
+        if not cached_user_ids:
+            print(f"[SUMMARY] 沒有使用者快取，跳過更新")
+            return
+
+        # 只載入這些使用者的專題
+        topics_to_summarize = {}
+        for user_id in cached_user_ids:
+            try:
+                user_topics = auth.get_user_topics(user_id)
+                for topic in user_topics:
+                    topics_to_summarize[topic['id']] = {
+                        'user_id': user_id,
+                        'name': topic['name']
+                    }
+            except Exception as e:
+                print(f"[SUMMARY] 無法讀取使用者 {user_id} 的專題: {e}")
+
+        print(f"[SUMMARY] 更新 {len(cached_user_ids)} 個活躍使用者的 {len(topics_to_summarize)} 個專題摘要")
+    else:
+        topics_to_summarize = {tid: {} for tid in TOPICS.keys()}
+
+    for tid, topic_info in topics_to_summarize.items():
+        # 記錄專題擁有者（在認證模式下）
+        if AUTH_ENABLED and 'user_id' in topic_info:
+            DATA_STORE['topic_owners'][tid] = topic_info['user_id']
+
         summary_text = generate_topic_summary(tid)
         DATA_STORE['summaries'][tid] = {
             'text': summary_text,
@@ -1158,90 +1467,196 @@ def index():
 
 @app.route('/admin')
 def admin():
-    return app.send_static_file('admin.html')
+    response = make_response(app.send_static_file('admin.html'))
+    # 防止快取，確保總是載入最新版本
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+@app.route('/login')
+def login():
+    response = make_response(app.send_static_file('login.html'))
+    # 防止快取，確保總是載入最新版本
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 @app.route('/api/all')
 def get_all():
-    result = {'topics': {}, 'last_update': DATA_STORE['last_update']}
-    for tid, cfg in TOPICS.items():
-        news = DATA_STORE['topics'].get(tid, [])
-        intl_news = DATA_STORE['international'].get(tid, [])
-        summary = DATA_STORE['summaries'].get(tid, {})
+    # 認證檢查（如果認證系統已啟用）
+    if AUTH_ENABLED:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            return jsonify({'error': '未登入'}), 401
+        user = auth.get_user_from_token(token)
+        if not user:
+            return jsonify({'error': '認證失敗'}), 401
 
-        # 格式化台灣新聞
-        fmt_news = []
+        user_id = user.id
+
+        # 按需載入：如果使用者資料尚未載入，現在載入
+        if user_id not in DATA_STORE:
+            print(f"[API] 使用者 {user_id} 首次訪問，開始載入資料...")
+            load_user_data(user_id)
+
+        # 從 Supabase 讀取該使用者的專題
+        user_topics = auth.get_user_topics(user_id)
+
+        # 取得該使用者的資料
+        user_data = DATA_STORE.get(user_id, {'topics': {}, 'international': {}, 'summaries': {}, 'last_update': ''})
+        result = {'topics': {}, 'last_update': user_data.get('last_update', '')}
         now = datetime.now(TAIPEI_TZ)
-        for n in news[:10]:
-            dt = n['published']
-            # 確保 dt 有時區資訊，並統一轉換到台北時區
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=TAIPEI_TZ)
+
+        for topic in user_topics:
+            tid = topic['id']
+            cfg = topic
+
+            # 取得新聞（從使用者快取或空列表）
+            news = user_data.get('topics', {}).get(tid, [])
+            intl_news = user_data.get('international', {}).get(tid, [])
+            summary = user_data.get('summaries', {}).get(tid, {})
+
+            # 格式化台灣新聞
+            fmt_news = []
+            for n in news[:10]:
+                dt = n['published']
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=TAIPEI_TZ)
+                else:
+                    dt = dt.astimezone(TAIPEI_TZ)
+
+                is_date_only = n.get('is_date_only', False)
+                if is_date_only:
+                    time_str = dt.strftime('%m/%d')
+                elif dt.date() == now.date():
+                    time_str = dt.strftime('%H:%M')
+                else:
+                    time_str = dt.strftime('%m/%d')
+
+                fmt_news.append({
+                    'title': n['title'],
+                    'link': n['link'],
+                    'source': n['source'],
+                    'time': time_str
+                })
+
+            # 格式化國際新聞
+            fmt_intl_news = []
+            for n in intl_news[:10]:
+                dt = n['published']
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=TAIPEI_TZ)
+                else:
+                    dt = dt.astimezone(TAIPEI_TZ)
+
+                if dt.date() == now.date():
+                    time_str = dt.strftime('%H:%M')
+                else:
+                    time_str = dt.strftime('%m/%d')
+
+                fmt_intl_news.append({
+                    'title': n['title'],
+                    'title_original': n.get('title_original', ''),
+                    'link': n['link'],
+                    'source': n['source'],
+                    'time': time_str
+                })
+
+            # 處理關鍵字顯示
+            keywords = cfg.get('keywords', [])
+            if isinstance(keywords, dict):
+                display_keywords = keywords.get('zh', [])
             else:
-                dt = dt.astimezone(TAIPEI_TZ)
+                display_keywords = keywords if keywords else []
 
-            # 根據日期決定顯示格式
-            is_date_only = n.get('is_date_only', False)
+            result['topics'][tid] = {
+                'id': tid,
+                'name': cfg['name'],
+                'icon': cfg.get('icon', '📌'),
+                'keywords': display_keywords,
+                'summary': summary.get('text', ''),
+                'summary_updated': summary.get('updated_at'),
+                'news': fmt_news,
+                'international': fmt_intl_news,
+                'order': cfg.get('order', 999)
+            }
+        
+        return jsonify(result)
+    
+    else:
+        # 認證未啟用時使用舊邏輯（向後相容）
+        result = {'topics': {}, 'last_update': DATA_STORE['last_update']}
+        now = datetime.now(TAIPEI_TZ)
+        
+        for tid, cfg in TOPICS.items():
+            news = DATA_STORE['topics'].get(tid, [])
+            intl_news = DATA_STORE['international'].get(tid, [])
+            summary = DATA_STORE['summaries'].get(tid, {})
 
-            if is_date_only:
-                # Google News 等只有日期的新聞，只顯示日期
-                time_str = dt.strftime('%m/%d')
-            elif dt.date() == now.date():
-                # 今天的新聞顯示時間
-                time_str = dt.strftime('%H:%M')
+            fmt_news = []
+            for n in news[:10]:
+                dt = n['published']
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=TAIPEI_TZ)
+                else:
+                    dt = dt.astimezone(TAIPEI_TZ)
+
+                is_date_only = n.get('is_date_only', False)
+                if is_date_only:
+                    time_str = dt.strftime('%m/%d')
+                elif dt.date() == now.date():
+                    time_str = dt.strftime('%H:%M')
+                else:
+                    time_str = dt.strftime('%m/%d')
+
+                fmt_news.append({
+                    'title': n['title'],
+                    'link': n['link'],
+                    'source': n['source'],
+                    'time': time_str
+                })
+
+            fmt_intl_news = []
+            for n in intl_news[:10]:
+                dt = n['published']
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=TAIPEI_TZ)
+                else:
+                    dt = dt.astimezone(TAIPEI_TZ)
+
+                if dt.date() == now.date():
+                    time_str = dt.strftime('%H:%M')
+                else:
+                    time_str = dt.strftime('%m/%d')
+
+                fmt_intl_news.append({
+                    'title': n['title'],
+                    'title_original': n.get('title_original', ''),
+                    'link': n['link'],
+                    'source': n['source'],
+                    'time': time_str
+                })
+
+            keywords = cfg.get('keywords', [])
+            if isinstance(keywords, dict):
+                display_keywords = keywords.get('zh', [])
             else:
-                # 其他日期顯示月/日
-                time_str = dt.strftime('%m/%d')
+                display_keywords = keywords
 
-            fmt_news.append({
-                'title': n['title'],
-                'link': n['link'],
-                'source': n['source'],
-                'time': time_str
-            })
-
-        # 格式化國際新聞（最多10則）
-        fmt_intl_news = []
-        for n in intl_news[:10]:
-            dt = n['published']
-            # 確保 dt 有時區資訊，並統一轉換到台北時區
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=TAIPEI_TZ)
-            else:
-                dt = dt.astimezone(TAIPEI_TZ)
-
-            # 根據日期決定顯示格式
-            if dt.date() == now.date():
-                time_str = dt.strftime('%H:%M')
-            else:
-                time_str = dt.strftime('%m/%d')
-
-            fmt_intl_news.append({
-                'title': n['title'],
-                'title_original': n.get('title_original', ''),
-                'link': n['link'],
-                'source': n['source'],
-                'time': time_str
-            })
-
-        # 處理關鍵字顯示（只顯示中文關鍵字）
-        keywords = cfg.get('keywords', [])
-        if isinstance(keywords, dict):
-            display_keywords = keywords.get('zh', [])
-        else:
-            display_keywords = keywords
-
-        result['topics'][tid] = {
-            'id': tid,
-            'name': cfg['name'],
-            'icon': cfg.get('icon', '📌'),
-            'keywords': display_keywords,
-            'summary': summary.get('text', ''),
-            'summary_updated': summary.get('updated_at'),
-            'news': fmt_news,
-            'international': fmt_intl_news,
-            'order': cfg.get('order', 999)
-        }
-    return jsonify(result)
+            result['topics'][tid] = {
+                'id': tid,
+                'name': cfg['name'],
+                'icon': cfg.get('icon', '📌'),
+                'keywords': display_keywords,
+                'summary': summary.get('text', ''),
+                'summary_updated': summary.get('updated_at'),
+                'news': fmt_news,
+                'international': fmt_intl_news,
+                'order': cfg.get('order', 999)
+            }
+        return jsonify(result)
 
 @app.route('/api/refresh', methods=['POST'])
 def refresh():
@@ -1255,99 +1670,321 @@ def refresh_summary():
 
 @app.route('/api/loading-status')
 def loading_status():
-    """回傳載入進度狀態"""
+    """回傳載入進度狀態（使用者專屬）"""
+    if AUTH_ENABLED:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if token:
+            user = auth.get_user_from_token(token)
+            if user:
+                # 取得該使用者的專題數量
+                user_topics = auth.get_user_topics(user.id)
+                user_topic_count = len(user_topics)
+
+                # 如果使用者專題為 0，顯示完成狀態
+                if user_topic_count == 0:
+                    return jsonify({
+                        'is_loading': False,
+                        'current': 0,
+                        'total': 0,
+                        'phase': '',
+                        'current_topic': ''
+                    })
+
+                # 檢查該使用者的專題中有多少已經載入完成
+                user_id = user.id
+                loaded_count = 0
+
+                # 從快取中檢查該使用者的專題資料
+                if user_id in DATA_STORE:
+                    for topic in user_topics:
+                        topic_id = topic['id']
+                        # 檢查是否有台灣新聞或國際新聞資料
+                        has_tw_news = topic_id in DATA_STORE[user_id].get('topics', {})
+                        has_intl_news = topic_id in DATA_STORE[user_id].get('international', {})
+                        if has_tw_news or has_intl_news:
+                            loaded_count += 1
+
+                # 如果全域正在載入，且該使用者還有專題未載入
+                if LOADING_STATUS['is_loading'] and loaded_count < user_topic_count:
+                    return jsonify({
+                        'is_loading': True,
+                        'current': loaded_count,
+                        'total': user_topic_count,
+                        'phase': LOADING_STATUS['phase'],
+                        'current_topic': LOADING_STATUS.get('current_topic', '')
+                    })
+                else:
+                    # 所有專題都已載入完成
+                    return jsonify({
+                        'is_loading': False,
+                        'current': user_topic_count,
+                        'total': user_topic_count,
+                        'phase': '',
+                        'current_topic': ''
+                    })
+
+    # 未登入或認證失敗時返回預設狀態
     return jsonify(LOADING_STATUS)
 
 @app.route('/api/admin/topics', methods=['GET'])
 def get_topics():
-    # 回傳專題設定及摘要資訊
-    result = {}
-    for tid, cfg in TOPICS.items():
-        # 處理關鍵字格式（新格式 dict vs 舊格式 list）
-        keywords = cfg.get('keywords', [])
-        if isinstance(keywords, dict):
-            display_keywords = keywords.get('zh', [])
-        else:
-            display_keywords = keywords
+    # 認證檢查（如果認證系統已啟用）
+    if AUTH_ENABLED:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            return jsonify({'error': '未登入'}), 401
+        user = auth.get_user_from_token(token)
+        if not user:
+            return jsonify({'error': '認證失敗'}), 401
         
-        # 取得摘要
-        summary_data = DATA_STORE['summaries'].get(tid, {})
+        # 從 Supabase 讀取該使用者的專題
+        user_topics = auth.get_user_topics(user.id)
         
-        # 取得新聞數量
-        news_count = len(DATA_STORE['topics'].get(tid, []))
+        result = {}
+        for topic in user_topics:
+            tid = topic['id']
+            keywords = topic.get('keywords', {})
+            
+            # 處理關鍵字格式
+            if isinstance(keywords, dict):
+                display_keywords = keywords.get('zh', [])
+            else:
+                display_keywords = keywords if keywords else []
+            
+            # 取得摘要（從本地快取）
+            summary_data = DATA_STORE['summaries'].get(tid, {})
+            
+            # 取得新聞數量（從本地快取）
+            news_count = len(DATA_STORE['topics'].get(tid, []))
+            
+            result[tid] = {
+                'name': topic['name'],
+                'keywords': display_keywords,
+                'negative_keywords': topic.get('negative_keywords', []),
+                'icon': topic.get('icon', '📌'),
+                'summary': summary_data.get('text', ''),
+                'summary_updated': summary_data.get('updated_at'),
+                'news_count': news_count,
+                'order': topic.get('order', 999)
+            }
         
-        result[tid] = {
-            'name': cfg['name'],
-            'keywords': display_keywords,
-            'negative_keywords': cfg.get('negative_keywords', []),
-            'icon': cfg.get('icon', ''),
-            'summary': summary_data.get('text', ''),
-            'summary_updated': summary_data.get('updated_at'),
-            'news_count': news_count,
-            'order': cfg.get('order', 999)
-        }
-    return jsonify({'topics': result, 'last_update': DATA_STORE['last_update']})
+        return jsonify({'topics': result, 'last_update': DATA_STORE['last_update']})
+    
+    else:
+        # 認證未啟用時使用舊的共享專題（向後相容）
+        result = {}
+        for tid, cfg in TOPICS.items():
+            keywords = cfg.get('keywords', [])
+            if isinstance(keywords, dict):
+                display_keywords = keywords.get('zh', [])
+            else:
+                display_keywords = keywords
+
+            summary_data = DATA_STORE['summaries'].get(tid, {})
+            news_count = len(DATA_STORE['topics'].get(tid, []))
+
+            result[tid] = {
+                'name': cfg['name'],
+                'keywords': display_keywords,
+                'negative_keywords': cfg.get('negative_keywords', []),
+                'icon': cfg.get('icon', ''),
+                'summary': summary_data.get('text', ''),
+                'summary_updated': summary_data.get('updated_at'),
+                'news_count': news_count,
+                'order': cfg.get('order', 999)
+            }
+        return jsonify({'topics': result, 'last_update': DATA_STORE['last_update']})
 
 @app.route('/api/admin/topics', methods=['POST'])
 def add_topic():
-    data = request.json
-    name = data.get('name', '').strip()
-    if not name:
-        return jsonify({'error': 'Empty name'}), 400
+    # 認證檢查（如果認證系統已啟用）
+    if AUTH_ENABLED:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            return jsonify({'error': '未登入'}), 401
+        user = auth.get_user_from_token(token)
+        if not user:
+            return jsonify({'error': '認證失敗'}), 401
+        
+        data = request.json
+        name = data.get('name', '').strip()
+        if not name:
+            return jsonify({'error': 'Empty name'}), 400
 
-    # AI 生成關鍵字
-    keywords = generate_keywords_with_ai(name)
+        # 檢查是否使用 AI 生成關鍵字（預設為 true）
+        generate_keywords = data.get('generate_keywords', True)
 
-    # 計算新專題的 order（放在最後）
-    max_order = max([t.get('order', 0) for t in TOPICS.values()], default=-1)
-    new_order = max_order + 1
+        if generate_keywords:
+            # AI 生成關鍵字
+            keywords = generate_keywords_with_ai(name)
+        else:
+            # 使用專題名稱作為唯一關鍵字
+            keywords = {
+                'zh': [name],
+                'en': [],
+                'ja': []
+            }
 
-    tid = generate_topic_id(name)
-    TOPICS[tid] = {'name': name, 'keywords': keywords, 'order': new_order}
-    save_topics_config()
+        # 計算新專題的 order
+        user_topics = auth.get_user_topics(user.id)
+        max_order = max([t.get('order', 0) for t in user_topics], default=-1)
+        new_order = max_order + 1
 
-    # 只更新新專題的新聞（不更新其他專題）
-    update_single_topic_news(tid)
+        # 儲存到 Supabase
+        new_topic = auth.create_topic(
+            user_id=user.id,
+            name=name,
+            keywords=keywords,
+            icon='📌',
+            negative_keywords=[],
+            order=new_order
+        )
+        
+        if not new_topic:
+            return jsonify({'error': '建立專題失敗'}), 500
+        
+        tid = new_topic['id']
+        
+        # 更新本地快取供新聞抓取使用
+        TOPICS[tid] = {'name': name, 'keywords': keywords, 'order': new_order, 'user_id': user.id}
+        
+        # 只更新新專題的新聞
+        update_single_topic_news(tid)
 
-    # 只為新專題生成摘要
-    if PERPLEXITY_API_KEY:
-        print(f"[INIT] 為新專題「{name}」生成 AI 摘要...")
-        summary_text = generate_topic_summary(tid)
-        DATA_STORE['summaries'][tid] = {
-            'text': summary_text,
-            'updated_at': datetime.now(TAIPEI_TZ).isoformat()
-        }
+        # 只為新專題生成摘要
+        if PERPLEXITY_API_KEY:
+            print(f"[INIT] 為新專題「{name}」生成 AI 摘要...")
+            summary_text = generate_topic_summary(tid)
+            DATA_STORE['summaries'][tid] = {
+                'text': summary_text,
+                'updated_at': datetime.now(TAIPEI_TZ).isoformat()
+            }
 
-    return jsonify({'status': 'ok'})
+        return jsonify({'status': 'ok', 'topic_id': tid})
+    
+    else:
+        # 認證未啟用時使用舊邏輯（向後相容）
+        data = request.json
+        name = data.get('name', '').strip()
+        if not name:
+            return jsonify({'error': 'Empty name'}), 400
+
+        keywords = generate_keywords_with_ai(name)
+        max_order = max([t.get('order', 0) for t in TOPICS.values()], default=-1)
+        new_order = max_order + 1
+
+        tid = generate_topic_id(name)
+        TOPICS[tid] = {'name': name, 'keywords': keywords, 'order': new_order}
+        save_topics_config()
+
+        update_single_topic_news(tid)
+
+        if PERPLEXITY_API_KEY:
+            print(f"[INIT] 為新專題「{name}」生成 AI 摘要...")
+            summary_text = generate_topic_summary(tid)
+            DATA_STORE['summaries'][tid] = {
+                'text': summary_text,
+                'updated_at': datetime.now(TAIPEI_TZ).isoformat()
+            }
+
+        return jsonify({'status': 'ok'})
 
 @app.route('/api/admin/topics/<tid>', methods=['PUT'])
 def update_topic(tid):
-    if tid not in TOPICS:
-        return jsonify({'error': 'Not found'}), 404
-    data = request.json
-    if 'keywords' in data:
-        TOPICS[tid]['keywords'] = data['keywords']
-    if 'negative_keywords' in data:
-        TOPICS[tid]['negative_keywords'] = data['negative_keywords']
-    save_topics_config()
+    # 認證檢查（如果認證系統已啟用）
+    if AUTH_ENABLED:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            return jsonify({'error': '未登入'}), 401
+        user = auth.get_user_from_token(token)
+        if not user:
+            return jsonify({'error': '認證失敗'}), 401
+        
+        data = request.json
+        updates = {}
+        if 'keywords' in data:
+            updates['keywords'] = data['keywords']
+        if 'negative_keywords' in data:
+            updates['negative_keywords'] = data['negative_keywords']
+        
+        # 更新 Supabase（會驗證擁有者）
+        success = auth.update_topic(tid, user.id, updates)
+        if not success:
+            return jsonify({'error': '更新失敗或無權限'}), 403
+        
+        # 更新本地快取
+        if tid in TOPICS:
+            TOPICS[tid].update(updates)
+        
+        # 在背景線程執行新聞更新
+        import threading
+        update_thread = threading.Thread(target=update_topic_news, daemon=True)
+        update_thread.start()
+        
+        return jsonify({'status': 'ok', 'message': '關鍵字已儲存，新聞正在背景更新'})
     
-    # 在背景線程執行新聞更新，避免請求超時
-    import threading
-    update_thread = threading.Thread(target=update_topic_news, daemon=True)
-    update_thread.start()
-    
-    return jsonify({'status': 'ok', 'message': '關鍵字已儲存，新聞正在背景更新'})
+    else:
+        # 認證未啟用時使用舊邏輯
+        if tid not in TOPICS:
+            return jsonify({'error': 'Not found'}), 404
+        data = request.json
+        if 'keywords' in data:
+            TOPICS[tid]['keywords'] = data['keywords']
+        if 'negative_keywords' in data:
+            TOPICS[tid]['negative_keywords'] = data['negative_keywords']
+        save_topics_config()
+        
+        import threading
+        update_thread = threading.Thread(target=update_topic_news, daemon=True)
+        update_thread.start()
+        
+        return jsonify({'status': 'ok', 'message': '關鍵字已儲存，新聞正在背景更新'})
 
 @app.route('/api/admin/topics/<tid>', methods=['DELETE'])
 def delete_topic(tid):
-    if tid in TOPICS:
-        del TOPICS[tid]
-        save_topics_config()
-    return jsonify({'status': 'ok'})
+    # 認證檢查（如果認證系統已啟用）
+    if AUTH_ENABLED:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            return jsonify({'error': '未登入'}), 401
+        user = auth.get_user_from_token(token)
+        if not user:
+            return jsonify({'error': '認證失敗'}), 401
+        
+        # 從 Supabase 刪除（會驗證擁有者）
+        success = auth.delete_topic(tid, user.id)
+        if not success:
+            return jsonify({'error': '刪除失敗或無權限'}), 403
+        
+        # 從本地快取刪除
+        if tid in TOPICS:
+            del TOPICS[tid]
+        if tid in DATA_STORE['topics']:
+            del DATA_STORE['topics'][tid]
+        if tid in DATA_STORE['summaries']:
+            del DATA_STORE['summaries'][tid]
+        
+        return jsonify({'status': 'ok'})
+    
+    else:
+        # 認證未啟用時使用舊邏輯
+        if tid in TOPICS:
+            del TOPICS[tid]
+            save_topics_config()
+        return jsonify({'status': 'ok'})
 
 @app.route('/api/admin/topics/reorder', methods=['PUT'])
 def reorder_topics():
     """更新專題排序"""
+    # 認證檢查（如果認證系統已啟用）
+    if AUTH_ENABLED:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            return jsonify({'error': '未登入'}), 401
+        user = auth.get_user_from_token(token)
+        if not user:
+            return jsonify({'error': '認證失敗'}), 401
+
     data = request.json
     order_list = data.get('order', [])
 
@@ -1364,6 +2001,249 @@ def reorder_topics():
     save_topics_config()
     print("[REORDER] 順序已儲存到 topics_config.json")
     return jsonify({'status': 'ok'})
+
+# ============ 認證 API ============
+
+# 嘗試載入認證模組（如果 Supabase 已設定）
+try:
+    import auth
+    AUTH_ENABLED = bool(os.getenv('SUPABASE_URL') and os.getenv('SUPABASE_KEY'))
+except ImportError:
+    AUTH_ENABLED = False
+    print("[AUTH] 認證模組未載入（auth.py 不存在或 Supabase 未設定）")
+
+@app.route('/api/auth/status')
+def auth_status():
+    """檢查認證系統狀態（可選：驗證 token）"""
+    result = {
+        'enabled': AUTH_ENABLED,
+        'supabase_configured': bool(os.getenv('SUPABASE_URL'))
+    }
+
+    # 如果提供了 token，驗證其有效性
+    if AUTH_ENABLED:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if token:
+            try:
+                user = auth.get_user_from_token(token)
+                if user:
+                    result['authenticated'] = True
+                    result['user'] = {
+                        'email': user.email,
+                        'id': user.id
+                    }
+                else:
+                    result['authenticated'] = False
+            except:
+                result['authenticated'] = False
+        else:
+            result['authenticated'] = False
+
+    return jsonify(result)
+
+@app.route('/api/auth/signup', methods=['POST'])
+def auth_signup():
+    """使用者註冊（需要邀請碼）"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    data = request.json
+    email = data.get('email', '').strip()
+    password = data.get('password', '')
+    invite_code = data.get('invite_code', '').strip()
+    
+    if not email or not password:
+        return jsonify({'error': '請填寫 Email 和密碼'}), 400
+    
+    if not invite_code:
+        return jsonify({'error': '請輸入邀請碼'}), 400
+    
+    if len(password) < 6:
+        return jsonify({'error': '密碼至少需要 6 個字元'}), 400
+    
+    result, error = auth.signup(email, password, invite_code)
+    
+    if error:
+        return jsonify({'error': error}), 400
+    
+    # 註冊成功，自動登入
+    login_result, login_error = auth.login(email, password)
+
+    if login_error:
+        return jsonify({'error': '註冊成功！我們已發送確認信到您的信箱，請點擊信中的連結以啟用帳號，然後再回來登入。'}), 200
+    
+    return jsonify({
+        'access_token': login_result.session.access_token,
+        'refresh_token': login_result.session.refresh_token,
+        'user': {
+            'id': login_result.user.id,
+            'email': login_result.user.email
+        },
+        'role': auth.get_user_role(login_result.user.id)
+    })
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    """使用者登入"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    data = request.json
+    email = data.get('email', '').strip()
+    password = data.get('password', '')
+    
+    if not email or not password:
+        return jsonify({'error': '請填寫 Email 和密碼'}), 400
+    
+    result, error = auth.login(email, password)
+    
+    if error:
+        return jsonify({'error': error}), 401
+    
+    return jsonify({
+        'access_token': result.session.access_token,
+        'refresh_token': result.session.refresh_token,
+        'user': {
+            'id': result.user.id,
+            'email': result.user.email
+        },
+        'role': auth.get_user_role(result.user.id)
+    })
+
+@app.route('/api/auth/logout', methods=['POST'])
+def auth_logout():
+    """使用者登出"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    auth.logout(token)
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/auth/me')
+def auth_me():
+    """取得當前使用者資訊"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not token:
+        return jsonify({'error': '未登入'}), 401
+    
+    user = auth.get_user_from_token(token)
+    if not user:
+        return jsonify({'error': '認證失敗'}), 401
+    
+    return jsonify({
+        'user': {
+            'id': user.id,
+            'email': user.email
+        },
+        'role': auth.get_user_role(user.id)
+    })
+
+# ============ 邀請碼管理 API（管理員）============
+
+@app.route('/api/admin/invites', methods=['GET'])
+def get_invites():
+    """取得所有邀請碼"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    # 驗證管理員權限
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not token:
+        return jsonify({'error': '未登入'}), 401
+    
+    user = auth.get_user_from_token(token)
+    if not user or not auth.is_admin(user.id):
+        return jsonify({'error': '需要管理員權限'}), 403
+    
+    invites = auth.get_invite_codes()
+    return jsonify({'invites': invites})
+
+@app.route('/api/admin/invites', methods=['POST'])
+def create_invite():
+    """建立邀請碼"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not token:
+        return jsonify({'error': '未登入'}), 401
+    
+    user = auth.get_user_from_token(token)
+    if not user or not auth.is_admin(user.id):
+        return jsonify({'error': '需要管理員權限'}), 403
+    
+    data = request.json or {}
+    expires_days = data.get('expires_days', 7)
+    
+    invite = auth.generate_invite_code(user.id, expires_days)
+    if invite:
+        return jsonify({'invite': invite})
+    else:
+        return jsonify({'error': '建立邀請碼失敗'}), 500
+
+@app.route('/api/admin/invites/<invite_id>', methods=['DELETE'])
+def delete_invite(invite_id):
+    """刪除邀請碼"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not token:
+        return jsonify({'error': '未登入'}), 401
+    
+    user = auth.get_user_from_token(token)
+    if not user or not auth.is_admin(user.id):
+        return jsonify({'error': '需要管理員權限'}), 403
+    
+    if auth.delete_invite_code(invite_id):
+        return jsonify({'status': 'ok'})
+    else:
+        return jsonify({'error': '刪除失敗'}), 500
+
+# ============ 使用者管理 API（管理員）============
+
+@app.route('/api/admin/users', methods=['GET'])
+def get_users():
+    """取得所有使用者"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not token:
+        return jsonify({'error': '未登入'}), 401
+    
+    user = auth.get_user_from_token(token)
+    if not user or not auth.is_admin(user.id):
+        return jsonify({'error': '需要管理員權限'}), 403
+    
+    users = auth.get_all_users()
+    return jsonify({'users': users})
+
+@app.route('/api/admin/users/<user_id>/role', methods=['PUT'])
+def update_user_role(user_id):
+    """更新使用者角色"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not token:
+        return jsonify({'error': '未登入'}), 401
+    
+    user = auth.get_user_from_token(token)
+    if not user or not auth.is_admin(user.id):
+        return jsonify({'error': '需要管理員權限'}), 403
+    
+    data = request.json or {}
+    role = data.get('role', 'user')
+    
+    if auth.update_user_role(user_id, role):
+        return jsonify({'status': 'ok'})
+    else:
+        return jsonify({'error': '更新失敗'}), 500
 
 # ============ Main ============
 
@@ -1391,22 +2271,8 @@ if __name__ == '__main__':
     import threading
     import sys
 
-    # 在背景線程執行初始化資料
-    def background_init():
-        print("[INIT] 背景更新資料...", flush=True)
-        sys.stdout.flush()
-        update_topic_news()
-        if PERPLEXITY_API_KEY:
-            print("[INIT] 生成 AI 摘要...", flush=True)
-            sys.stdout.flush()
-            update_all_summaries()
-        print("[INIT] 背景更新完成", flush=True)
-        sys.stdout.flush()
-
-    # 啟動背景線程
-    init_thread = threading.Thread(target=background_init, daemon=True)
-    init_thread.start()
-
-    print("[SERVER] 伺服器啟動中... (已載入快取資料，新資料將在背景更新)")
+    # 按需載入策略：不在啟動時載入所有使用者資料
+    # 使用者登入時才會載入他們的專題資料
+    print("[SERVER] 伺服器啟動中... (使用按需載入策略，使用者登入時才載入資料)")
     app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
 

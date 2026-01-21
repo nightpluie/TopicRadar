@@ -392,6 +392,8 @@
         <header>
             <h1>WISE情報中心｜設定</h1>
             <div class="header-actions">
+                <span id="user-info" style="margin-right: 20px; color: var(--text-secondary); font-size: 14px;"></span>
+                <button id="logout-btn" class="btn btn-secondary" style="margin-right: 10px; padding: 6px 14px; font-size: 13px;">登出</button>
                 <a href="/">返回前台</a>
             </div>
         </header>
@@ -404,6 +406,32 @@
             </div>
             <div>
                 <button class="btn btn-secondary" onclick="refreshAllNews()">立即更新新聞</button>
+            </div>
+        </div>
+
+        <!-- 管理員專區（僅管理員可見） -->
+        <div id="admin-panel" style="display: none; margin-bottom: 30px;">
+            <h2 style="font-size: 20px; margin-bottom: 15px; color: var(--color-radar);">⚙️ 管理員專區</h2>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- 邀請碼管理 -->
+                <div style="background: var(--bg-panel); border: 1px solid var(--border); padding: 20px; border-radius: 2px;">
+                    <h3 style="font-size: 16px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                        📧 邀請碼管理
+                        <button class="btn btn-primary" style="padding: 6px 12px; font-size: 13px;" onclick="createInviteCode()">生成新邀請碼</button>
+                    </h3>
+                    <div id="invite-codes-list" style="max-height: 300px; overflow-y: auto;">
+                        <!-- 邀請碼列表 -->
+                    </div>
+                </div>
+
+                <!-- 使用者管理 -->
+                <div style="background: var(--bg-panel); border: 1px solid var(--border); padding: 20px; border-radius: 2px;">
+                    <h3 style="font-size: 16px; margin-bottom: 15px;">👥 使用者管理</h3>
+                    <div id="users-list" style="max-height: 300px; overflow-y: auto;">
+                        <!-- 使用者列表 -->
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -422,6 +450,7 @@
 
                 <div class="btn-group" style="justify-content: flex-end;">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="addTopicWithoutAI()">確定</button>
                     <button type="submit" class="btn btn-ai">讓 AI 生成關鍵字</button>
                 </div>
             </form>
@@ -467,11 +496,102 @@
     <script>
         const API_BASE = '';
         let topicsData = {};
+        let authToken = null;
+        let currentUser = null;
+
+        // === 認證相關函數 ===
+
+        // 檢查登入狀態
+        async function checkAuth() {
+            authToken = localStorage.getItem('auth_token');
+
+            if (!authToken) {
+                // 未登入，導向登入頁面
+                window.location.href = '/login';
+                return false;
+            }
+
+            // 驗證 token 有效性
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) {
+                    // Token 無效，清除並導向登入頁
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('user_email');
+                    localStorage.removeItem('user_id');
+                    localStorage.removeItem('user_role');
+                    window.location.href = '/login';
+                    return false;
+                }
+
+                const data = await response.json();
+                currentUser = data.user;
+
+                // 顯示使用者資訊
+                const userRole = data.role || localStorage.getItem('user_role') || 'user';
+                document.getElementById('user-info').textContent = `👤 ${currentUser.email} ${userRole === 'admin' ? '(管理員)' : ''}`;
+
+                // 如果是管理員，顯示管理員專區
+                if (userRole === 'admin') {
+                    document.getElementById('admin-panel').style.display = 'block';
+                    loadInviteCodes();
+                    loadUsers();
+                }
+
+                return true;
+            } catch (error) {
+                console.error('認證檢查失敗:', error);
+                window.location.href = '/login';
+                return false;
+            }
+        }
+
+        // 登出
+        async function logout() {
+            try {
+                await fetch(`${API_BASE}/api/auth/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+            } catch (error) {
+                console.error('登出請求失敗:', error);
+            }
+
+            // 清除本地儲存
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_email');
+            localStorage.removeItem('user_id');
+            localStorage.removeItem('user_role');
+
+            // 導向登入頁
+            window.location.href = '/login';
+        }
+
+        // 取得認證 headers
+        function getAuthHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            };
+        }
+
+        // === 專題管理相關函數 ===
 
         // 載入所有專題設定
         async function loadTopics() {
             try {
-                const response = await fetch(`${API_BASE}/api/admin/topics`);
+                const response = await fetch(`${API_BASE}/api/admin/topics`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
                 const data = await response.json();
                 topicsData = data.topics || {};
                 renderTopics();
@@ -554,6 +674,45 @@
             document.getElementById('add-topic-form').reset();
         }
 
+        // 新增專題（不使用 AI，直接使用專題名稱作為關鍵字）
+        async function addTopicWithoutAI() {
+            const name = document.getElementById('new-topic-name').value.trim();
+
+            if (!name) {
+                alert('請輸入議題名稱');
+                return;
+            }
+
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading"></span> 建立中...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/topics`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        name,
+                        generate_keywords: false
+                    })
+                });
+
+                if (response.ok) {
+                    closeModal();
+                    await loadTopics();
+                } else {
+                    const error = await response.json();
+                    alert('新增失敗: ' + (error.message || '未知錯誤'));
+                }
+            } catch (error) {
+                alert('新增失敗: ' + error.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
         // 新增專題（AI 生成關鍵字）
         document.getElementById('add-topic-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -570,7 +729,7 @@
             try {
                 const response = await fetch(`${API_BASE}/api/admin/topics`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders(),
                     body: JSON.stringify({ name })
                 });
 
@@ -611,7 +770,10 @@
 
             try {
                 const response = await fetch(`${API_BASE}/api/admin/topics/${pendingDeleteId}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
                 });
 
                 if (response.ok) {
@@ -636,7 +798,11 @@
 
             // 加載負面關鍵字（如果有的話）
             // 從原始資料讀取 negative_keywords
-            fetch(`${API_BASE}/api/admin/topics`)
+            fetch(`${API_BASE}/api/admin/topics`, {
+                headers: {
+                    'Authorization': `Bearer ${authToken}`
+                }
+            })
                 .then(r => r.json())
                 .then(data => {
                     const topicData = data.topics[topicId];
@@ -675,7 +841,7 @@
             try {
                 const response = await fetch(`${API_BASE}/api/admin/topics/${pendingEditId}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders(),
                     body: JSON.stringify({ keywords, negative_keywords })
                 });
 
@@ -695,7 +861,12 @@
         // 重新整理新聞
         async function refreshAllNews() {
             try {
-                await fetch(`${API_BASE}/api/refresh`, { method: 'POST' });
+                await fetch(`${API_BASE}/api/refresh`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
                 alert('新聞更新完成！');
                 await loadTopics();
             } catch (error) {
@@ -799,7 +970,7 @@
             try {
                 const response = await fetch(`${API_BASE}/api/admin/topics/reorder`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getAuthHeaders(),
                     body: JSON.stringify({ order: newOrder })
                 });
 
@@ -824,10 +995,179 @@
         // 初始化
         let loadingCheckInterval = null;
 
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 先檢查認證
+            const isAuthenticated = await checkAuth();
+            if (!isAuthenticated) {
+                return; // 會自動導向登入頁
+            }
+
+            // 綁定登出按鈕
+            document.getElementById('logout-btn').addEventListener('click', logout);
+
+            // 載入資料
             loadTopics();
             startLoadingStatusCheck();
         });
+
+        // === 管理員功能 ===
+
+        // 載入邀請碼列表
+        async function loadInviteCodes() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/invites`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const listEl = document.getElementById('invite-codes-list');
+
+                if (!data.codes || data.codes.length === 0) {
+                    listEl.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">尚無邀請碼</p>';
+                    return;
+                }
+
+                listEl.innerHTML = data.codes.map(code => `
+                    <div style="background: var(--bg-primary); border: 1px solid var(--border-dim); padding: 12px; margin-bottom: 8px; border-radius: 2px; font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <code style="background: rgba(0,255,136,0.1); padding: 4px 8px; color: var(--color-radar); font-family: var(--font-mono);">${code.code}</code>
+                            <button onclick="deleteInviteCode('${code.id}')" style="background: none; border: none; color: var(--color-red); cursor: pointer; font-size: 12px;">刪除</button>
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 12px;">
+                            ${code.used_by ? `✅ 已使用 (${new Date(code.used_at).toLocaleDateString()})` : '⏳ 未使用'}
+                            ${code.expires_at ? ` | 到期: ${new Date(code.expires_at).toLocaleDateString()}` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('載入邀請碼失敗:', error);
+            }
+        }
+
+        // 生成新邀請碼
+        async function createInviteCode() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/invites`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ expires_days: 7 })
+                });
+
+                if (response.ok) {
+                    await loadInviteCodes();
+                    alert('邀請碼已生成！');
+                } else {
+                    const error = await response.json();
+                    alert('生成失敗: ' + (error.error || '未知錯誤'));
+                }
+            } catch (error) {
+                alert('生成失敗: ' + error.message);
+            }
+        }
+
+        // 刪除邀請碼
+        async function deleteInviteCode(inviteId) {
+            if (!confirm('確定要刪除此邀請碼嗎？')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/invites/${inviteId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    await loadInviteCodes();
+                } else {
+                    alert('刪除失敗');
+                }
+            } catch (error) {
+                alert('刪除失敗: ' + error.message);
+            }
+        }
+
+        // 載入使用者列表
+        async function loadUsers() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/users`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const listEl = document.getElementById('users-list');
+
+                if (!data.users || data.users.length === 0) {
+                    listEl.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">尚無使用者</p>';
+                    return;
+                }
+
+                listEl.innerHTML = data.users.map(user => {
+                    const topicsList = user.topics && user.topics.length > 0
+                        ? user.topics.map(t => `<span style="background: rgba(0,255,136,0.1); padding: 2px 6px; margin-right: 4px; border-radius: 2px; font-size: 11px;">${t}</span>`).join('')
+                        : '<span style="color: var(--text-muted); font-size: 11px;">尚未追蹤任何專題</span>';
+
+                    return `
+                    <div style="background: var(--bg-primary); border: 1px solid var(--border-dim); padding: 12px; margin-bottom: 10px; border-radius: 2px; font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div>
+                                <strong style="color: var(--text-primary);">${user.user_id.substring(0, 8)}...</strong>
+                                <span style="margin-left: 8px; padding: 2px 6px; background: ${user.role === 'admin' ? 'rgba(255,136,0,0.2)' : 'rgba(0,255,136,0.1)'}; color: ${user.role === 'admin' ? 'var(--color-orange)' : 'var(--color-radar)'}; border-radius: 2px; font-size: 11px;">
+                                    ${user.role === 'admin' ? '👑 管理員' : '👤 一般使用者'}
+                                </span>
+                            </div>
+                            <select onchange="updateUserRole('${user.user_id}', this.value)" style="background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 8px; border-radius: 2px; font-size: 12px;">
+                                <option value="user" ${user.role === 'user' ? 'selected' : ''}>一般使用者</option>
+                                <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>管理員</option>
+                            </select>
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 6px;">
+                            📊 專題數: ${user.topic_count || 0} | 📅 註冊: ${new Date(user.created_at).toLocaleDateString()}
+                        </div>
+                        <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-dim);">
+                            <div style="color: var(--text-secondary); font-size: 11px; margin-bottom: 4px;">追蹤專題：</div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                ${topicsList}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                }).join('');
+            } catch (error) {
+                console.error('載入使用者列表失敗:', error);
+            }
+        }
+
+        // 更新使用者角色
+        async function updateUserRole(userId, newRole) {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/users/${userId}/role`, {
+                    method: 'PUT',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ role: newRole })
+                });
+
+                if (response.ok) {
+                    alert('角色已更新！');
+                    await loadUsers();
+                } else {
+                    const error = await response.json();
+                    alert('更新失敗: ' + (error.error || '未知錯誤'));
+                    await loadUsers(); // 重新載入以恢復原狀
+                }
+            } catch (error) {
+                alert('更新失敗: ' + error.message);
+                await loadUsers();
+            }
+        }
 
         // 載入進度檢查
         function startLoadingStatusCheck() {
@@ -841,14 +1181,23 @@
                 const status = await response.json();
                 const statusEl = document.getElementById('loading-status');
 
+                // 確保數字正確顯示
+                const current = status.current || 0;
+                const total = status.total || 0;
+
                 if (status.is_loading) {
-                    statusEl.textContent = `載入中 ${status.current}/${status.total}`;
+                    statusEl.textContent = `載入中 ${current}/${total}`;
                     statusEl.className = 'status-loading';
-                } else if (status.total > 0) {
+                } else if (total > 0) {
                     statusEl.textContent = '已載入';
                     statusEl.className = 'status-loaded';
                     // 載入完成後重新讀取專題數據
                     await loadTopics();
+                    // 清除輪詢 interval，避免一直重複呼叫
+                    if (loadingCheckInterval) {
+                        clearInterval(loadingCheckInterval);
+                        loadingCheckInterval = null;
+                    }
                 } else {
                     statusEl.textContent = '等待載入';
                     statusEl.className = '';

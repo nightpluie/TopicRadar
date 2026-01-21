@@ -116,44 +116,48 @@ def save_data_cache():
             user_data = {}  # {user_id: {topics: {}, international: {}, summaries: {}}}
             topic_owners = DATA_STORE.get('topic_owners', {})
 
-            # 遍歷所有專題，按擁有者分組
-            for tid in set(list(DATA_STORE['topics'].keys()) +
-                          list(DATA_STORE['international'].keys()) +
-                          list(DATA_STORE['summaries'].keys())):
+            # 遍歷 DATA_STORE 中的所有使用者鍵
+            # 我們假設非保留關鍵字的鍵都是 user_id
+            reserved_keys = ['topics', 'international', 'summaries', 'last_update', 'topic_owners']
+            for user_id, user_content in DATA_STORE.items():
+                if user_id in reserved_keys:
+                    continue
+                
+                if not isinstance(user_content, dict):
+                    continue
 
-                user_id = topic_owners.get(tid, 'unknown')
-
-                if user_id not in user_data:
-                    user_data[user_id] = {
-                        'topics': {},
-                        'international': {},
-                        'summaries': {},
-                        'last_update': DATA_STORE['last_update']
-                    }
+                user_data[user_id] = {
+                    'topics': {},
+                    'international': {},
+                    'summaries': {},
+                    'last_update': user_content.get('last_update')
+                }
 
                 # 台灣新聞
-                if tid in DATA_STORE['topics']:
-                    news_list = []
-                    for news in DATA_STORE['topics'][tid]:
-                        news_copy = news.copy()
-                        if 'published' in news_copy and isinstance(news_copy['published'], datetime):
-                            news_copy['published'] = news_copy['published'].isoformat()
-                        news_list.append(news_copy)
-                    user_data[user_id]['topics'][tid] = news_list
+                if 'topics' in user_content:
+                    for tid, news_list in user_content['topics'].items():
+                        fmt_list = []
+                        for news in news_list:
+                            news_copy = news.copy()
+                            if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                                news_copy['published'] = news_copy['published'].isoformat()
+                            fmt_list.append(news_copy)
+                        user_data[user_id]['topics'][tid] = fmt_list
 
                 # 國際新聞
-                if tid in DATA_STORE['international']:
-                    news_list = []
-                    for news in DATA_STORE['international'][tid]:
-                        news_copy = news.copy()
-                        if 'published' in news_copy and isinstance(news_copy['published'], datetime):
-                            news_copy['published'] = news_copy['published'].isoformat()
-                        news_list.append(news_copy)
-                    user_data[user_id]['international'][tid] = news_list
+                if 'international' in user_content:
+                    for tid, news_list in user_content['international'].items():
+                        fmt_list = []
+                        for news in news_list:
+                            news_copy = news.copy()
+                            if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                                news_copy['published'] = news_copy['published'].isoformat()
+                            fmt_list.append(news_copy)
+                        user_data[user_id]['international'][tid] = fmt_list
 
                 # 摘要
-                if tid in DATA_STORE['summaries']:
-                    user_data[user_id]['summaries'][tid] = DATA_STORE['summaries'][tid]
+                if 'summaries' in user_content:
+                    user_data[user_id]['summaries'] = user_content['summaries']
 
             # 儲存結構化快取
             cache_data = {

@@ -8,6 +8,7 @@ import time
 import hashlib
 import feedparser
 import requests
+import threading
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from flask import Flask, jsonify, request, make_response
@@ -866,16 +867,17 @@ def update_single_topic_news(topic_id):
     print(f"[UPDATE] {cfg['name']} 更新完成")
 
 def load_user_data(user_id):
-    """按需載入使用者的專題資料"""
+    """按需載入使用者的專題資料（非同步背景執行）"""
     global DATA_STORE
 
     # 檢查是否已經載入
     if user_id in DATA_STORE:
+        # 如果已經有資料結構，就不重複觸發
         return True
 
-    print(f"[LOAD] 開始載入使用者 {user_id} 的資料...")
+    print(f"[LOAD] 觸發使用者 {user_id} 資料載入 (背景執行)...")
 
-    # 初始化使用者的資料結構
+    # 先初始化空資料結構，讓前端不會報錯，並且 loading_status 可以偵測到 user_topic_count > loaded_count
     DATA_STORE[user_id] = {
         'topics': {},
         'international': {},
@@ -883,13 +885,25 @@ def load_user_data(user_id):
         'last_update': datetime.now(TAIPEI_TZ).isoformat()
     }
 
+    # 啟動背景執行緒
+    thread = threading.Thread(target=_load_user_data_worker, args=(user_id,))
+    thread.daemon = True
+    thread.start()
+    
+    return True
+
+def _load_user_data_worker(user_id):
+    """背景執行緒：實際執行資料抓取"""
+    print(f"[WORKER] 開始為使用者 {user_id} 抓取資料...")
+    
     try:
         # 取得使用者的專題
+        # 注意：這裡是在執行緒中，確保 auth 模組是 thread-safe 的（Supabase client 通常是）
         user_topics = auth.get_user_topics(user_id)
 
         if not user_topics:
-            print(f"[LOAD] 使用者 {user_id} 沒有專題")
-            return True
+            print(f"[WORKER] 使用者 {user_id} 沒有專題")
+            return
 
         # 轉換為更新格式
         topics_to_load = {}
@@ -902,16 +916,22 @@ def load_user_data(user_id):
                 'user_id': user_id
             }
 
-        print(f"[LOAD] 為使用者 {user_id} 載入 {len(topics_to_load)} 個專題的新聞...")
+        print(f"[WORKER] 為使用者 {user_id} 載入 {len(topics_to_load)} 個專題的新聞...")
 
         # 抓取 RSS 新聞
         all_news_tw = []
         for name, url in RSS_SOURCES_TW.items():
-            all_news_tw.extend(fetch_rss(url, name, max_items=50))
+            try:
+                all_news_tw.extend(fetch_rss(url, name, max_items=50))
+            except Exception as e:
+                print(f"[WORKER] RSS 抓取失敗 ({name}): {e}")
 
         all_news_intl = []
         for name, url in RSS_SOURCES_INTL.items():
-            all_news_intl.extend(fetch_rss(url, name, max_items=50))
+            try:
+                all_news_intl.extend(fetch_rss(url, name, max_items=50))
+            except Exception as e:
+                print(f"[WORKER] RSS 抓取失敗 ({name}): {e}")
 
         # 為每個專題過濾新聞
         for tid, cfg in topics_to_load.items():
@@ -921,22 +941,27 @@ def load_user_data(user_id):
 
             # 過濾國際新聞
             filtered_intl = filter_news_by_keywords(all_news_intl, cfg, is_international=True)
-            # 翻譯標題
-            for news in filtered_intl:
-                if GEMINI_API_KEY and 'title_original' not in news:
-                    news['title_original'] = news['title']
-                    news['title'] = translate_with_gemini(news['title'])
+            # 翻譯標題（如果需要且有 API Key）
+            if GEMINI_API_KEY:
+                for news in filtered_intl:
+                    if 'title_original' not in news:
+                        news['title_original'] = news['title']
+                        news['title'] = translate_with_gemini(news['title'])
+            
             DATA_STORE[user_id]['international'][tid] = filtered_intl[:10]
 
+        # 更新最後更新時間
+        DATA_STORE[user_id]['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
+        
         # 儲存快取
         save_data_cache()
 
-        print(f"[LOAD] 使用者 {user_id} 的資料載入完成")
-        return True
+        print(f"[WORKER] 使用者 {user_id} 的資料載入完成")
 
     except Exception as e:
-        print(f"[LOAD] 載入使用者 {user_id} 資料失敗: {e}")
-        return False
+        print(f"[WORKER] 載入使用者 {user_id} 資料失敗: {e}")
+        import traceback
+        traceback.print_exc()
 
 def update_topic_news():
     global LOADING_STATUS
@@ -1730,14 +1755,21 @@ def loading_status():
                         if has_tw_news or has_intl_news:
                             loaded_count += 1
 
-                # 如果全域正在載入，且該使用者還有專題未載入
-                if LOADING_STATUS['is_loading'] and loaded_count < user_topic_count:
+                # 如果還有專題未載入（不管全域狀態為何，只要使用者資料不全就顯示載入中）
+                if loaded_count < user_topic_count:
+                    # 計算總體進度
+                    progress_current = loaded_count
+                    progress_total = user_topic_count
+                    
+                    # 嘗試估算當前正在處理的專題（這裡只能給個大概）
+                    current_topic_name = "資料載入中..."
+                    
                     return jsonify({
                         'is_loading': True,
-                        'current': loaded_count,
-                        'total': user_topic_count,
-                        'phase': LOADING_STATUS['phase'],
-                        'current_topic': LOADING_STATUS.get('current_topic', '')
+                        'current': progress_current,
+                        'total': progress_total,
+                        'phase': '更新資料',
+                        'current_topic': current_topic_name
                     })
                 else:
                     # 所有專題都已載入完成

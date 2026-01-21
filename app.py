@@ -760,6 +760,41 @@ def keyword_match(text, keywords, negative_keywords=None):
 
     return False
 
+def filter_news_by_keywords(news_list, topic_config, is_international=False):
+    """根據專題設定過濾新聞列表"""
+    keywords = topic_config.get('keywords', {})
+    negative_keywords = topic_config.get('negative_keywords', [])
+
+    # 提取正面關鍵字
+    target_keywords = []
+    if isinstance(keywords, list):
+        target_keywords = keywords
+    elif isinstance(keywords, dict):
+        if is_international:
+            target_keywords = keywords.get('en', []) + keywords.get('ja', []) + keywords.get('ko', [])
+        else:
+            target_keywords = keywords.get('zh', [])
+    
+    if not target_keywords:
+        return []
+
+    filtered = []
+    seen_hashes = set()
+
+    for item in news_list:
+        # 內容組合標題和摘要以增加匹配率
+        content = f"{item['title']} {item['summary']}"
+        
+        if keyword_match(content, target_keywords, negative_keywords):
+            # 去重
+            h = hashlib.md5(item['title'].encode()).hexdigest()
+            if h not in seen_hashes:
+                seen_hashes.add(h)
+                item['hash'] = h
+                filtered.append(item)
+    
+    return filtered
+
 def update_single_topic_news(topic_id):
     """只更新單一專題的新聞（用於新增專題時）"""
     if topic_id not in TOPICS:

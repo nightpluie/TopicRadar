@@ -990,17 +990,102 @@ def _load_user_data_worker(user_id):
         for tid, cfg in topics_to_load.items():
             # 過濾台灣新聞
             filtered_tw = filter_news_by_keywords(all_news_tw, cfg)
+            
+            # 如果 RSS 找不到足夠的新聞（少於 5 則），嘗試用 Google News 補充
+            if len(filtered_tw) < 5:
+                keywords = cfg.get('keywords', {})
+                if isinstance(keywords, list):
+                    keywords_zh = keywords
+                else:
+                    keywords_zh = keywords.get('zh', [])
+                
+                if keywords_zh:
+                    print(f"[WORKER] {cfg['name']}: RSS 只有 {len(filtered_tw)} 則，使用 Google News 補充...")
+                    try:
+                        google_news = fetch_google_news_by_keywords(keywords_zh, max_items=20)
+                        
+                        # 過濾並去重
+                        existing_hashes = {hashlib.md5(item['title'].encode()).hexdigest() for item in filtered_tw}
+                        negative_keywords = cfg.get('negative_keywords', [])
+                        
+                        for item in google_news:
+                            if len(filtered_tw) >= 10:
+                                break
+                            content = f"{item['title']} {item['summary']}"
+                            if keyword_match(content, keywords_zh, negative_keywords):
+                                h = hashlib.md5(item['title'].encode()).hexdigest()
+                                if h not in existing_hashes:
+                                    existing_hashes.add(h)
+                                    filtered_tw.append(item)
+                    except Exception as e:
+                        print(f"[WORKER] Google News 補充失敗: {e}")
+
+            # 按時間排序並取前 10 則
+            filtered_tw.sort(key=lambda x: x['published'], reverse=True)
             DATA_STORE[user_id]['topics'][tid] = filtered_tw[:10]
 
             # 過濾國際新聞
             filtered_intl = filter_news_by_keywords(all_news_intl, cfg, is_international=True)
-            # 翻譯標題（如果需要且有 API Key）
+            
+            # 如果 RSS 找不到足夠的國際新聞（少於 5 則），嘗試用 Google News 補充
+            if len(filtered_intl) < 5:
+                keywords = cfg.get('keywords', {})
+                if isinstance(keywords, dict):
+                    keywords_en = keywords.get('en', [])
+                    keywords_ja = keywords.get('ja', [])
+                    keywords_ko = keywords.get('ko', [])
+                    
+                    # 決定搜尋關鍵字
+                    search_keywords = keywords_en
+                    if keywords_ja: search_keywords = keywords_ja
+                    
+                    if search_keywords:
+                       print(f"[WORKER] {cfg['name']} (國際): RSS 只有 {len(filtered_intl)} 則，使用 Google News 補充...")
+                       try:
+                           # 簡單策略：依據關鍵字語言選擇一個區域補充
+                           region = 'US'
+                           lang = 'en'
+                           if keywords_ja:
+                               region = 'JP'
+                               lang = 'ja'
+                           elif keywords_ko:
+                               region = 'KR'
+                               lang = 'ko'
+                               search_keywords = keywords_ko
+                           
+                           google_intl = fetch_google_news_intl(search_keywords, region, lang, max_items=10)
+                           
+                           existing_hashes = {hashlib.md5(item.get('title_original', item['title']).encode()).hexdigest() for item in filtered_intl}
+                           negative_keywords = cfg.get('negative_keywords', [])
+                           all_intl_keywords = keywords_en + keywords_ja + keywords_ko
+
+                           for item in google_intl:
+                               if len(filtered_intl) >= 10:
+                                   break
+                               content = f"{item['title']} {item['summary']}"
+                               if keyword_match(content, all_intl_keywords, negative_keywords):
+                                   h = hashlib.md5(item['title'].encode()).hexdigest()
+                                   if h not in existing_hashes:
+                                       existing_hashes.add(h)
+                                       # 翻譯
+                                       if GEMINI_API_KEY:
+                                            item['title_original'] = item['title']
+                                            item['title'] = translate_with_gemini(item['title'])
+                                            time.sleep(0.5)
+                                       filtered_intl.append(item)
+                       except Exception as e:
+                           print(f"[WORKER] Google News (國際) 補充失敗: {e}")
+
+            # 翻譯不需要補充的（原本 RSS 抓到的）標題
             if GEMINI_API_KEY:
                 for news in filtered_intl:
                     if 'title_original' not in news:
                         news['title_original'] = news['title']
                         news['title'] = translate_with_gemini(news['title'])
+                        time.sleep(0.2)
             
+            # 按時間排序並取前 10 則
+            filtered_intl.sort(key=lambda x: x['published'], reverse=True)
             DATA_STORE[user_id]['international'][tid] = filtered_intl[:10]
 
         # 更新最後更新時間

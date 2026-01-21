@@ -231,26 +231,52 @@ def load_data_cache():
             # 合併所有使用者的資料
             user_data = cache_data.get('users', {})
             for user_id, user_cache in user_data.items():
+                # 初始化使用者資料結構
+                DATA_STORE[user_id] = {
+                    'topics': {},
+                    'international': {},
+                    'summaries': {},
+                    'last_update': user_cache.get('last_update', None)
+                }
+
                 # 載入台灣新聞
                 for tid, news_list in user_cache.get('topics', {}).items():
+                    # 全域資料
                     DATA_STORE['topics'][tid] = []
+                    # 使用者資料
+                    DATA_STORE[user_id]['topics'][tid] = []
+                    
                     for news in news_list:
                         news_copy = news.copy()
                         if 'published' in news_copy and isinstance(news_copy['published'], str):
                             news_copy['published'] = datetime.fromisoformat(news_copy['published'])
+                        
+                        # 寫入全域
                         DATA_STORE['topics'][tid].append(news_copy)
+                        # 寫入使用者專屬
+                        DATA_STORE[user_id]['topics'][tid].append(news_copy)
 
                 # 載入國際新聞
                 for tid, news_list in user_cache.get('international', {}).items():
+                    # 全域資料
                     DATA_STORE['international'][tid] = []
+                    # 使用者資料
+                    DATA_STORE[user_id]['international'][tid] = []
+
                     for news in news_list:
                         news_copy = news.copy()
                         if 'published' in news_copy and isinstance(news_copy['published'], str):
                             news_copy['published'] = datetime.fromisoformat(news_copy['published'])
+                        
+                        # 寫入全域
                         DATA_STORE['international'][tid].append(news_copy)
+                        # 寫入使用者專屬
+                        DATA_STORE[user_id]['international'][tid].append(news_copy)
 
                 # 載入摘要
+                DATA_STORE[user_id]['summaries'] = user_cache.get('summaries', {}).copy()
                 for tid, summary in user_cache.get('summaries', {}).items():
+                    # 全域資料
                     DATA_STORE['summaries'][tid] = summary
 
                 # 更新最後更新時間（使用最新的）
@@ -260,8 +286,8 @@ def load_data_cache():
                         DATA_STORE['last_update'] = user_last_update
 
             user_count = len(user_data)
-            topic_count = len(DATA_STORE['topics'])
-            print(f"[CACHE] 從快取載入了 {user_count} 個使用者的 {topic_count} 個專題資料")
+            topic_count = len(DATA_STORE['topics']) # 這裡計算的是唯一專題數
+            print(f"[CACHE] 從快取載入了 {user_count} 個使用者的 {topic_count} 個專題資料到記憶體")
 
         else:
             # 舊格式：向後相容

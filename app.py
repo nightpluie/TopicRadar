@@ -1170,10 +1170,16 @@ def update_topic_news():
                 print(f"[SEARCH] {cfg['name']}: 補充後共 {len(all_items)} 則新聞")
 
             # 保持最新的 10 則（一則一則替換）
-            DATA_STORE['topics'][tid] = all_items[:10]
+            if AUTH_ENABLED and tid in DATA_STORE.get('topic_owners', {}):
+                owner_id = DATA_STORE['topic_owners'][tid]
+                if owner_id in DATA_STORE:
+                    DATA_STORE[owner_id]['topics'][tid] = all_items[:10]
+            else:
+                DATA_STORE['topics'][tid] = all_items[:10]
 
             if new_items:
-                print(f"[UPDATE] {cfg['name']}: 新增 {len(new_items)} 則新聞，當前 {len(DATA_STORE['topics'][tid])} 則")
+                current_count = len(DATA_STORE[owner_id]['topics'][tid]) if (AUTH_ENABLED and tid in DATA_STORE.get('topic_owners', {}) and owner_id in DATA_STORE) else len(DATA_STORE['topics'][tid])
+                print(f"[UPDATE] {cfg['name']}: 新增 {len(new_items)} 則新聞，當前 {current_count} 則")
 
         # 過濾國際新聞（使用英日文關鍵字）- 確保至少10則
         intl_keywords = keywords_en + keywords_ja
@@ -1251,11 +1257,17 @@ def update_topic_news():
                 all_intl_items.sort(key=lambda x: x['published'], reverse=True)
                 print(f"[SEARCH] {cfg['name']} (國際): 補充後共 {len(all_intl_items)} 則新聞")
 
-            # 保持最新的 10 則（一則一則替換）
-            DATA_STORE['international'][tid] = all_intl_items[:10]
+            # 保持最新的 10 則
+            if AUTH_ENABLED and tid in DATA_STORE.get('topic_owners', {}):
+                owner_id = DATA_STORE['topic_owners'][tid]
+                if owner_id in DATA_STORE:
+                    DATA_STORE[owner_id]['international'][tid] = all_intl_items[:10]
+            else:
+                DATA_STORE['international'][tid] = all_intl_items[:10]
 
             if new_intl_items:
-                print(f"[UPDATE] {cfg['name']} (國際): 新增 {len(new_intl_items)} 則新聞，當前 {len(DATA_STORE['international'][tid])} 則")
+                current_count = len(DATA_STORE[owner_id]['international'][tid]) if (AUTH_ENABLED and tid in DATA_STORE.get('topic_owners', {}) and owner_id in DATA_STORE) else len(DATA_STORE['international'][tid])
+                print(f"[UPDATE] {cfg['name']} (國際): 新增 {len(new_intl_items)} 則新聞，當前 {current_count} 則")
 
     DATA_STORE['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
     LOADING_STATUS['is_loading'] = False

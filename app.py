@@ -925,18 +925,35 @@ def load_user_data(user_id):
 
     # 檢查是否已經載入
     if user_id in DATA_STORE:
-        # 如果已經有資料結構，就不重複觸發
-        return True
+        # 檢查資料新鮮度
+        user_data = DATA_STORE[user_id]
+        last_update_str = user_data.get('last_update')
+        
+        should_refresh = False
+        if not last_update_str:
+            should_refresh = True
+        else:
+            try:
+                last_update = datetime.fromisoformat(last_update_str)
+                # 如果資料超過 5 分鐘未更新，則觸發背景更新
+                if (datetime.now(TAIPEI_TZ) - last_update).total_seconds() > 300:
+                    should_refresh = True
+            except ValueError:
+                should_refresh = True
 
-    print(f"[LOAD] 觸發使用者 {user_id} 資料載入 (背景執行)...")
-
-    # 先初始化空資料結構，讓前端不會報錯，並且 loading_status 可以偵測到 user_topic_count > loaded_count
-    DATA_STORE[user_id] = {
-        'topics': {},
-        'international': {},
-        'summaries': {},
-        'last_update': datetime.now(TAIPEI_TZ).isoformat()
-    }
+        if not should_refresh:
+            return True
+            
+        print(f"[LOAD] 使用者 {user_id} 資料已過期 (>5m)，觸發背景更新...")
+    else:
+        print(f"[LOAD] 觸發使用者 {user_id} 首次資料載入 (背景執行)...")
+        # 先初始化空資料結構
+        DATA_STORE[user_id] = {
+            'topics': {},
+            'international': {},
+            'summaries': {},
+            'last_update': datetime.now(TAIPEI_TZ).isoformat() # 暫時標記，避免短時間重複觸發
+        }
 
     # 啟動背景執行緒
     thread = threading.Thread(target=_load_user_data_worker, args=(user_id,))
@@ -1760,10 +1777,9 @@ def get_all():
 
         user_id = user.id
 
-        # 按需載入：如果使用者資料尚未載入，現在載入
-        if user_id not in DATA_STORE:
-            print(f"[API] 使用者 {user_id} 首次訪問，開始載入資料...")
-            load_user_data(user_id)
+        # 按需載入：總是呼叫 load_user_data，由該函式決定是否需要背景更新
+        # 這實現了「先顯示快取，背景檢查更新」的邏輯
+        load_user_data(user_id)
 
         # 從 Supabase 讀取該使用者的專題
         user_topics = auth.get_user_topics(user_id)

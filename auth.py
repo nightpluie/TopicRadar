@@ -412,3 +412,67 @@ def delete_topic(topic_id: str, user_id: str):
         return True
     except Exception:
         return False
+
+# ============ 快取管理 ============
+
+def load_user_cache(user_id: str):
+    """
+    從 Supabase 載入使用者的專題快取
+    回傳字典格式: {topic_id: {topics: [], international: [], summary: '', ...}}
+    """
+    try:
+        supabase = get_supabase()
+        result = supabase.table('topic_cache').select('*').eq('user_id', user_id).execute()
+        
+        cache_map = {}
+        for row in result.data:
+            tid = row['topic_id']
+            cache_map[tid] = {
+                'topics': row.get('domestic_news', []) or [],
+                'international': row.get('intl_news', []) or [],
+                'summary': {
+                    'text': row.get('summary', '') or '',
+                    'updated_at': row.get('summary_updated_at')
+                }
+            }
+        return cache_map
+    except Exception as e:
+        print(f"[AUTH] 載入快取失敗: {e}")
+        return {}
+
+def save_topic_cache_item(user_id: str, topic_id: str, domestic_news: list, intl_news: list, summary_data: dict):
+    """
+    更新單一專題的快取到 Supabase (Upsert)
+    """
+    try:
+        supabase = get_supabase()
+        
+        summary_text = summary_data.get('text', '')
+        summary_updated_at = summary_data.get('updated_at')
+
+        data = {
+            'user_id': user_id,
+            'topic_id': topic_id,
+            'domestic_news': domestic_news,
+            'intl_news': intl_news,
+            'summary': summary_text,
+            'summary_updated_at': summary_updated_at,
+            'updated_at': 'now()'
+        }
+        supabase.table('topic_cache').upsert(data).execute()
+        return True
+    except Exception as e:
+        print(f"[AUTH] 儲存快取失敗 ({topic_id}): {e}")
+        return False
+
+def delete_topic_cache(user_id: str, topic_id: str):
+    """
+    刪除專題快取
+    """
+    try:
+        supabase = get_supabase()
+        supabase.table('topic_cache').delete().eq('user_id', user_id).eq('topic_id', topic_id).execute()
+        return True
+    except Exception as e:
+        print(f"[AUTH] 刪除快取失敗: {e}")
+        return False

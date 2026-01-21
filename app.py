@@ -108,100 +108,61 @@ DATA_CACHE_FILE = 'data_cache.json'
 # ============ 資料快取管理 ============
 
 def save_data_cache():
-    """儲存資料到快取檔案（按使用者分組）"""
+    """儲存資料到快取（認證模式下同步到 Supabase，否則存檔案）"""
     try:
-        # 在認證模式下，按使用者分組儲存
+        # 在認證模式下，同步到 Supabase
         if AUTH_ENABLED:
-            # 按使用者分組資料
-            user_data = {}  # {user_id: {topics: {}, international: {}, summaries: {}}}
-            topic_owners = DATA_STORE.get('topic_owners', {})
-
-            # 遍歷 DATA_STORE 中的所有使用者鍵
-            # 我們假設非保留關鍵字的鍵都是 user_id
             reserved_keys = ['topics', 'international', 'summaries', 'last_update', 'topic_owners']
-            for user_id, user_content in DATA_STORE.items():
-                if user_id in reserved_keys:
-                    continue
+            active_users = [k for k in DATA_STORE.keys() if k not in reserved_keys]
+            
+            for uid in active_users:
+                user_content = DATA_STORE[uid]
                 
-                if not isinstance(user_content, dict):
-                    continue
+                # 收集所有涉及的 topic_id
+                tids = set()
+                if 'topics' in user_content: tids.update(user_content['topics'].keys())
+                if 'international' in user_content: tids.update(user_content['international'].keys())
+                if 'summaries' in user_content: tids.update(user_content['summaries'].keys())
+                
+                for tid in tids:
+                    dom = user_content.get('topics', {}).get(tid, [])
+                    intl = user_content.get('international', {}).get(tid, [])
+                    summ = user_content.get('summaries', {}).get(tid, {})
+                    
+                    auth.save_topic_cache_item(uid, tid, dom, intl, summ)
+            
+            # print(f"[SYNC] 已同步 {len(active_users)} 位使用者的快取到資料庫")
+            return
 
-                user_data[user_id] = {
-                    'topics': {},
-                    'international': {},
-                    'summaries': {},
-                    'last_update': user_content.get('last_update')
-                }
+        # ================= 舊版檔案儲存邏輯 (Legacy) =================
+        # 非認證模式：使用舊格式（向後相容）
+        cache_data = {
+            'topics': {},
+            'international': {},
+            'summaries': DATA_STORE['summaries'],
+            'last_update': DATA_STORE['last_update']
+        }
 
-                # 台灣新聞
-                if 'topics' in user_content:
-                    for tid, news_list in user_content['topics'].items():
-                        fmt_list = []
-                        for news in news_list:
-                            news_copy = news.copy()
-                            if 'published' in news_copy and isinstance(news_copy['published'], datetime):
-                                news_copy['published'] = news_copy['published'].isoformat()
-                            fmt_list.append(news_copy)
-                        user_data[user_id]['topics'][tid] = fmt_list
+        for tid, news_list in DATA_STORE['topics'].items():
+            cache_data['topics'][tid] = []
+            for news in news_list:
+                news_copy = news.copy()
+                if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                    news_copy['published'] = news_copy['published'].isoformat()
+                cache_data['topics'][tid].append(news_copy)
 
-                # 國際新聞
-                if 'international' in user_content:
-                    for tid, news_list in user_content['international'].items():
-                        fmt_list = []
-                        for news in news_list:
-                            news_copy = news.copy()
-                            if 'published' in news_copy and isinstance(news_copy['published'], datetime):
-                                news_copy['published'] = news_copy['published'].isoformat()
-                            fmt_list.append(news_copy)
-                        user_data[user_id]['international'][tid] = fmt_list
+        for tid, news_list in DATA_STORE['international'].items():
+            cache_data['international'][tid] = []
+            for news in news_list:
+                news_copy = news.copy()
+                if 'published' in news_copy and isinstance(news_copy['published'], datetime):
+                    news_copy['published'] = news_copy['published'].isoformat()
+                cache_data['international'][tid].append(news_copy)
 
-                # 摘要
-                if 'summaries' in user_content:
-                    user_data[user_id]['summaries'] = user_content['summaries']
+        with open(DATA_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f, ensure_ascii=False, indent=2)
 
-            # 儲存結構化快取
-            cache_data = {
-                'version': '2.0',  # 多使用者版本
-                'users': user_data,
-                'topic_owners': topic_owners
-            }
-
-            with open(DATA_CACHE_FILE, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f, ensure_ascii=False, indent=2)
-
-            user_count = len(user_data)
-            topic_count = len(topic_owners)
-            print(f"[CACHE] 已儲存 {user_count} 個使用者的 {topic_count} 個專題資料")
-
-        else:
-            # 非認證模式：使用舊格式（向後相容）
-            cache_data = {
-                'topics': {},
-                'international': {},
-                'summaries': DATA_STORE['summaries'],
-                'last_update': DATA_STORE['last_update']
-            }
-
-            for tid, news_list in DATA_STORE['topics'].items():
-                cache_data['topics'][tid] = []
-                for news in news_list:
-                    news_copy = news.copy()
-                    if 'published' in news_copy and isinstance(news_copy['published'], datetime):
-                        news_copy['published'] = news_copy['published'].isoformat()
-                    cache_data['topics'][tid].append(news_copy)
-
-            for tid, news_list in DATA_STORE['international'].items():
-                cache_data['international'][tid] = []
-                for news in news_list:
-                    news_copy = news.copy()
-                    if 'published' in news_copy and isinstance(news_copy['published'], datetime):
-                        news_copy['published'] = news_copy['published'].isoformat()
-                    cache_data['international'][tid].append(news_copy)
-
-            with open(DATA_CACHE_FILE, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f, ensure_ascii=False, indent=2)
-
-            print(f"[CACHE] 資料已儲存到 {DATA_CACHE_FILE}")
+        print(f"[CACHE] 資料已儲存到 {DATA_CACHE_FILE}")
 
     except Exception as e:
         print(f"[CACHE] 儲存失敗: {e}")
@@ -946,19 +907,42 @@ def load_user_data(user_id):
             
         print(f"[LOAD] 使用者 {user_id} 資料已過期 (>5m)，觸發背景更新...")
     else:
-        print(f"[LOAD] 觸發使用者 {user_id} 首次資料載入 (背景執行)...")
-        # 先初始化空資料結構
+        # 嘗試從 Supabase 資料庫載入快取
+        print(f"[LOAD] 嘗試從 Supabase 載入使用者 {user_id} 快取...")
+        db_cache = auth.load_user_cache(user_id)
+        
         DATA_STORE[user_id] = {
             'topics': {},
             'international': {},
             'summaries': {},
-            'last_update': datetime.now(TAIPEI_TZ).isoformat() # 暫時標記，避免短時間重複觸發
+            'last_update': '' # 稍後更新
         }
+        
+        if db_cache:
+            loaded_topics = 0
+            for tid, data in db_cache.items():
+                DATA_STORE[user_id]['topics'][tid] = data['topics']
+                DATA_STORE[user_id]['international'][tid] = data['international']
+                DATA_STORE[user_id]['summaries'][tid] = data['summary']
+                loaded_topics += 1
+            
+            # 簡單設定一個最後更新時間（取當前時間或保留空值讓下方邏輯觸發更新）
+            # 這裡我們設定為當前時間，但如果資料庫沒存 last_update，其實應該讓它刷新
+            # 為了保險起見，我們讓它顯示出來，但稍後檢查機制會判定是否需要刷新
+            # (P.S. 這裡沒存整體的 last_update，所以會被視為 stale，觸發背景更新，這是好事)
+            print(f"[LOAD] 從資料庫恢復了 {loaded_topics} 個專題的資料")
+        else:
+            print(f"[LOAD] 資料庫無快取，觸發使用者 {user_id} 首次資料載入 (背景執行)...")
+            # 保持 last_update 為空，讓遞迴後的檢查觸發更新
 
-    # 啟動背景執行緒
-    thread = threading.Thread(target=_load_user_data_worker, args=(user_id,))
-    thread.daemon = True
-    thread.start()
+        # 遞迴呼叫自己，進行新鮮度檢查
+        return load_user_data(user_id)
+    
+    # 啟動背景執行緒（適用於資料過期或全新載入的情況）
+    if user_id in DATA_STORE: # 雙重檢查，確保與上方邏輯一致
+        thread = threading.Thread(target=_load_user_data_worker, args=(user_id,))
+        thread.daemon = True
+        thread.start()
     
     return True
 
@@ -1108,8 +1092,16 @@ def _load_user_data_worker(user_id):
         # 更新最後更新時間
         DATA_STORE[user_id]['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
         
-        # 儲存快取
-        save_data_cache()
+        # 儲存快取到 Supabase
+        print(f"[WORKER] 正在將使用者 {user_id} 的快取同步到 Supabase...")
+        for tid in topics_to_load.keys():
+            domestic = DATA_STORE[user_id]['topics'].get(tid, [])
+            intl = DATA_STORE[user_id]['international'].get(tid, [])
+            summary = DATA_STORE[user_id]['summaries'].get(tid, {})
+            auth.save_topic_cache_item(user_id, tid, domestic, intl, summary)
+        
+        # 舊的檔案快取可保留可移除，這裡我們先移除以避免混淆
+        # save_data_cache()
 
         print(f"[WORKER] 使用者 {user_id} 的資料載入完成")
 

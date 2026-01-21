@@ -1499,10 +1499,23 @@ def update_all_summaries():
             DATA_STORE['topic_owners'][tid] = topic_info['user_id']
 
         summary_text = generate_topic_summary(tid)
-        DATA_STORE['summaries'][tid] = {
+        
+        summary_data = {
             'text': summary_text,
             'updated_at': datetime.now(TAIPEI_TZ).isoformat()
         }
+        
+        # 存入全域（向後相容/管理員查看）
+        DATA_STORE['summaries'][tid] = summary_data
+        
+        # 存入使用者專屬位置（重要！）
+        if AUTH_ENABLED and 'user_id' in topic_info:
+            user_id = topic_info['user_id']
+            if user_id in DATA_STORE:
+                if 'summaries' not in DATA_STORE[user_id]:
+                    DATA_STORE[user_id]['summaries'] = {}
+                DATA_STORE[user_id]['summaries'][tid] = summary_data
+        
         time.sleep(1)
 
     # 儲存到快取檔案

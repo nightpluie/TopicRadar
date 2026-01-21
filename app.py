@@ -1863,7 +1863,11 @@ def get_all():
                 'order': cfg.get('order', 999)
             }
         
-        return jsonify(result)
+        response = make_response(jsonify(result))
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
     
     else:
         # 認證未啟用時使用舊邏輯（向後相容）

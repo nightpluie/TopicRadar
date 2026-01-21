@@ -489,16 +489,18 @@ def translate_with_gemini(text, source_lang='auto', max_retries=3):
 
 # ============ Perplexity AI 摘要 ============
 
-def generate_topic_summary(topic_id):
+def generate_topic_summary(topic_id, topic_name=None, user_id=None):
     """使用 Perplexity AI 生成專題摘要"""
     if not PERPLEXITY_API_KEY:
         return "（尚未設定 Perplexity API Key）"
     
-    topic_config = TOPICS.get(topic_id)
-    if not topic_config:
-        return "（未知專題）"
-    
-    topic_name = topic_config['name']
+    # 1. 決定專題名稱
+    if not topic_name:
+        topic_config = TOPICS.get(topic_id)
+        if topic_config:
+            topic_name = topic_config['name']
+        else:
+            return "（未知專題）"
     
     try:
         url = "https://api.perplexity.ai/chat/completions"
@@ -507,10 +509,18 @@ def generate_topic_summary(topic_id):
             "Content-Type": "application/json"
         }
         
-        # 取得目前最新的幾則新聞標題作為參考（輔助）
-        if topic_id in DATA_STORE['topics']:
+        # 2. 決定參考新聞來源（支援使用者專屬資料）
+        news_source = []
+        if user_id and user_id in DATA_STORE:
+            # 優先從使用者資料中尋找
+            news_source = DATA_STORE[user_id].get('topics', {}).get(topic_id, [])
+        elif topic_id in DATA_STORE['topics']:
+            # 回退到全域資料
+            news_source = DATA_STORE['topics'][topic_id]
+
+        if news_source:
             recent_titles = [f"- {n['title']} ({n['published'].strftime('%Y/%m/%d') if isinstance(n['published'], datetime) else ''})" 
-                           for n in DATA_STORE['topics'][topic_id][:5]]
+                           for n in news_source[:5]]
             context = "\n".join(recent_titles)
         else:
             context = "（暫無相關 RSS 新聞）"
@@ -1498,7 +1508,12 @@ def update_all_summaries():
         if AUTH_ENABLED and 'user_id' in topic_info:
             DATA_STORE['topic_owners'][tid] = topic_info['user_id']
 
-        summary_text = generate_topic_summary(tid)
+        # 這裡傳入 topic_name 和 user_id，避免 "未知專題" 錯誤
+        summary_text = generate_topic_summary(
+            tid, 
+            topic_name=topic_info.get('name'), 
+            user_id=topic_info.get('user_id')
+        )
         
         summary_data = {
             'text': summary_text,

@@ -63,6 +63,7 @@ GOOGLE_NEWS_INTL_REGIONS = {
     '日本': {'code': 'JP', 'lang': 'ja'},
     '美國': {'code': 'US', 'lang': 'en'},
     '法國': {'code': 'FR', 'lang': 'fr'},
+    '韓國': {'code': 'KR', 'lang': 'ko'},
 }
 
 # 預設專題設定
@@ -782,12 +783,15 @@ def update_single_topic_news(topic_id):
     if isinstance(keywords, dict):
         keywords_en = keywords.get('en', [])
         keywords_ja = keywords.get('ja', [])
+        keywords_ko = keywords.get('ko', [])
 
         if keywords_ja:
             all_news_intl.extend(fetch_google_news_intl(keywords_ja, 'JP', 'ja', max_items=20))
         if keywords_en:
             all_news_intl.extend(fetch_google_news_intl(keywords_en, 'US', 'en', max_items=20))
             all_news_intl.extend(fetch_google_news_intl(keywords_en, 'FR', 'fr', max_items=20))
+        if keywords_ko:
+            all_news_intl.extend(fetch_google_news_intl(keywords_ko, 'KR', 'ko', max_items=20))
 
     # 4. 過濾該專題的新聞
     keywords_zh = keywords.get('zh', []) if isinstance(keywords, dict) else keywords
@@ -1503,7 +1507,26 @@ def update_all_summaries():
     else:
         topics_to_summarize = {tid: {} for tid in TOPICS.keys()}
 
+    # 設定載入狀態
+    global LOADING_STATUS
+    total_summaries = len(topics_to_summarize)
+    LOADING_STATUS = {
+        'is_loading': True,
+        'current': 0,
+        'total': total_summaries,
+        'current_topic': '',
+        'phase': 'summary'  # 標記為摘要更新階段
+    }
+
+    summary_index = 0
     for tid, topic_info in topics_to_summarize.items():
+        summary_index += 1
+        topic_name = topic_info.get('name', '未知專題')
+        
+        # 更新載入狀態
+        LOADING_STATUS['current'] = summary_index
+        LOADING_STATUS['current_topic'] = topic_name
+        
         # 記錄專題擁有者（在認證模式下）
         if AUTH_ENABLED and 'user_id' in topic_info:
             DATA_STORE['topic_owners'][tid] = topic_info['user_id']
@@ -1533,6 +1556,11 @@ def update_all_summaries():
         
         time.sleep(1)
 
+    # 完成，重設載入狀態
+    LOADING_STATUS['is_loading'] = False
+    LOADING_STATUS['current'] = total_summaries
+    LOADING_STATUS['phase'] = ''
+    
     # 儲存到快取檔案
     save_data_cache()
 
@@ -2062,6 +2090,9 @@ def delete_topic(tid):
 @app.route('/api/admin/topics/reorder', methods=['PUT'])
 def reorder_topics():
     """更新專題排序"""
+    data = request.json
+    order_list = data.get('order', [])
+    
     # 認證檢查（如果認證系統已啟用）
     if AUTH_ENABLED:
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
@@ -2070,9 +2101,19 @@ def reorder_topics():
         user = auth.get_user_from_token(token)
         if not user:
             return jsonify({'error': '認證失敗'}), 401
-
-    data = request.json
-    order_list = data.get('order', [])
+            
+        # 認證模式：更新 Supabase 資料庫
+        updated_count = 0
+        for item in order_list:
+            tid = item.get('id')
+            order = item.get('order')
+            if tid and order is not None:
+                # 呼叫 auth.update_topic 更新順序
+                if auth.update_topic(tid, user.id, {'order': order}):
+                    updated_count += 1
+                    
+        print(f"[REORDER] 已更新使用者 {user.id} 的 {updated_count} 個專題順序")
+        return jsonify({'status': 'ok', 'updated': updated_count})
 
     print(f"[REORDER] 收到排序請求: {order_list}")
 

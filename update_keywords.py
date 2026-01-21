@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 批次更新專題關鍵字（生成三語關鍵字）
+# 批次更新專題關鍵字（生成四語關鍵字：中英日韓）
 
 import os
 import json
@@ -13,7 +13,7 @@ ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 TOPICS_FILE = 'topics_config.json'
 
 def generate_keywords_with_ai(topic_name):
-    """使用 Claude 生成議題相關關鍵字（中英日三語）"""
+    """使用 Claude 生成議題相關關鍵字（中英日韓四語）"""
     if not ANTHROPIC_API_KEY:
         print(f"[WARN] 無 Anthropic API Key")
         return None
@@ -38,11 +38,13 @@ def generate_keywords_with_ai(topic_name):
 1. 繁體中文關鍵字：10-15 個（核心詞彙、相關單位、同義詞）
 2. 英文關鍵字：8-10 個（對應的英文詞彙，用於搜尋國際新聞）
 3. 日文關鍵字：8-10 個（對應的日文詞彙，用於搜尋日本新聞）
+4. 韓文關鍵字：8-10 個（對應的韓文詞彙，用於搜尋韓國新聞）
 
 格式（請嚴格遵守）：
 ZH: 關鍵字1, 關鍵字2, 關鍵字3
 EN: keyword1, keyword2, keyword3
 JA: キーワード1, キーワード2, キーワード3
+KO: 키워드1, 키워드2, 키워드3
 
 直接輸出，不要有其他開場白或解釋。"""
                 }
@@ -55,8 +57,8 @@ JA: キーワード1, キーワード2, キーワード3
         data = response.json()
         content = data.get('content', [{}])[0].get('text', '')
 
-        # 解析三語關鍵字
-        keywords = {'zh': [], 'en': [], 'ja': []}
+        # 解析四語關鍵字
+        keywords = {'zh': [], 'en': [], 'ja': [], 'ko': []}
         for line in content.split('\n'):
             line = line.strip()
             if line.startswith('ZH:'):
@@ -65,12 +67,14 @@ JA: キーワード1, キーワード2, キーワード3
                 keywords['en'] = [kw.strip() for kw in line[3:].split(',') if kw.strip()]
             elif line.startswith('JA:'):
                 keywords['ja'] = [kw.strip() for kw in line[3:].split(',') if kw.strip()]
+            elif line.startswith('KO:'):
+                keywords['ko'] = [kw.strip() for kw in line[3:].split(',') if kw.strip()]
 
         # 確保至少有基本關鍵字
         if not keywords['zh']:
             keywords['zh'] = [topic_name]
 
-        print(f"[AI] 為「{topic_name}」生成了關鍵字: ZH={len(keywords['zh'])}, EN={len(keywords['en'])}, JA={len(keywords['ja'])}")
+        print(f"[AI] 為「{topic_name}」生成了關鍵字: ZH={len(keywords['zh'])}, EN={len(keywords['en'])}, JA={len(keywords['ja'])}, KO={len(keywords['ko'])}")
         return keywords
 
     except Exception as e:

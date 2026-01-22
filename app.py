@@ -943,12 +943,12 @@ def load_user_data(user_id, check_freshness=False):
                 DATA_STORE[user_id]['last_update'] = latest_update_time
                 
             print(f"[LOAD] 從資料庫恢復了 {loaded_topics} 個專題的資料 (最後更新: {latest_update_time})")
+            
+            # 遞迴呼叫自己，進行新鮮度檢查
+            return load_user_data(user_id, check_freshness)
         else:
             print(f"[LOAD] 資料庫無快取，觸發使用者 {user_id} 首次資料載入 (背景執行)...")
-            # 保持 last_update 為空，讓遞迴後的檢查觸發更新
-
-        # 遞迴呼叫自己，進行新鮮度檢查
-        return load_user_data(user_id, check_freshness)
+            # 不遞迴，直接往下執行以啟動背景執行緒
     
     # 啟動背景執行緒（適用於資料過期或全新載入的情況）
     if user_id in DATA_STORE: # 雙重檢查，確保與上方邏輯一致

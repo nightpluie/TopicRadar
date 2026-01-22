@@ -493,7 +493,7 @@ def translate_with_gemini(text, source_lang='auto', target_lang='zh-TW', max_ret
 
 
 def auto_translate_keywords(chinese_keywords):
-    """自動將中文關鍵字翻譯成英日韓三語
+    """自動將中文關鍵字翻譯成英日韓三語（一次 API 請求完成）
     
     Args:
         chinese_keywords: 中文關鍵字列表
@@ -504,28 +504,60 @@ def auto_translate_keywords(chinese_keywords):
     if not isinstance(chinese_keywords, list) or not chinese_keywords:
         return {'zh': [], 'en': [], 'ja': [], 'ko': []}
     
+    if not GEMINI_API_KEY:
+        print("[WARN] 無 Gemini API Key，跳過自動翻譯")
+        return {'zh': chinese_keywords, 'en': [], 'ja': [], 'ko': []}
+    
     # 合併中文關鍵字作為翻譯源
     source_text = ', '.join(chinese_keywords)
     
     try:
-        # 翻譯成英文
+        # 使用一次 API 請求同時翻譯成三語
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
+        headers = {"Content-Type": "application/json"}
+        params = {"key": GEMINI_API_KEY}
+
+        prompt = f"""請將以下中文關鍵字翻譯成英文、日文、韓文。
+
+中文關鍵字：{source_text}
+
+格式要求（嚴格遵守）：
+EN: keyword1, keyword2, keyword3
+JA: キーワード1, キーワード2, キーワード3
+KO: 키워드1, 키워드2, 키워드3
+
+直接輸出翻譯結果，不要有其他說明。"""
+
+        payload = {
+            "contents": [{
+                "parts": [{"text": prompt}]
+            }],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 300
+            }
+        }
+
+        response = requests.post(url, headers=headers, params=params, json=payload, timeout=20)
+        response.raise_for_status()
+
+        data = response.json()
+        content = data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+
+        # 解析三語翻譯結果
         en_keywords = []
-        en_result = translate_with_gemini(source_text, target_lang='en')
-        if en_result and not en_result.startswith('[翻譯失敗]') and not en_result.startswith('[未翻譯]'):
-            en_keywords = [kw.strip() for kw in en_result.split(',') if kw.strip()]
-        
-        # 翻譯成日文
         ja_keywords = []
-        ja_result = translate_with_gemini(source_text, target_lang='ja')
-        if ja_result and not ja_result.startswith('[翻譯失敗]') and not ja_result.startswith('[未翻譯]'):
-            ja_keywords = [kw.strip() for kw in ja_result.split(',') if kw.strip()]
-        
-        # 翻譯成韓文
         ko_keywords = []
-        ko_result = translate_with_gemini(source_text, target_lang='ko')
-        if ko_result and not ko_result.startswith('[翻譯失敗]') and not ko_result.startswith('[未翻譯]'):
-            ko_keywords = [kw.strip() for kw in ko_result.split(',') if kw.strip()]
         
+        for line in content.split('\n'):
+            line = line.strip()
+            if line.startswith('EN:'):
+                en_keywords = [kw.strip() for kw in line[3:].split(',') if kw.strip()]
+            elif line.startswith('JA:'):
+                ja_keywords = [kw.strip() for kw in line[3:].split(',') if kw.strip()]
+            elif line.startswith('KO:'):
+                ko_keywords = [kw.strip() for kw in line[3:].split(',') if kw.strip()]
+
         print(f"[AUTO-TRANSLATE] 已翻譯關鍵字: EN={len(en_keywords)}, JA={len(ja_keywords)}, KO={len(ko_keywords)}")
         
         return {

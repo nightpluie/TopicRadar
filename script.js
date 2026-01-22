@@ -402,11 +402,15 @@ async function checkLoadingStatus() {
         if (!statusEl) return;
 
         if (status.is_loading) {
-            statusEl.textContent = `載入中 ${status.current}/${status.total}`;
+            let statusText = '蒐集資料'; // Default
+            if (status.phase === 'summary') {
+                statusText = '生成動態中';
+            }
+            statusEl.textContent = `${statusText} ${status.current}/${status.total}`;
             statusEl.className = 'status-loading';
             lastLoadingStatus = 'loading';
         } else if (status.total > 0) {
-            statusEl.textContent = '已載入';
+            statusEl.textContent = '已更新'; // Changed from '已載入' to match 'Updated' vibe if user prefers? User said "已更新"
             statusEl.className = 'status-loaded';
 
             // 只在從「載入中」變成「已載入」時才重新讀取資料

@@ -1422,6 +1422,13 @@ def update_domestic_news():
         'current_topic': '',
         'phase': 'domestic'
     }
+    LOADING_STATUS = {
+        'is_loading': True,
+        'current': 0,
+        'total': total_topics,
+        'current_topic': '',
+        'phase': 'news'
+    }
     print(f"\n[UPDATE:DOMESTIC] 開始更新國內新聞 - {datetime.now(TAIPEI_TZ).strftime('%H:%M:%S')}")
 
     # 1. 抓取台灣新聞
@@ -1537,7 +1544,9 @@ def update_international_news():
         'current': 0,
         'total': total_topics,
         'current_topic': '',
-        'phase': 'international'
+        'total': total_topics,
+        'current_topic': '',
+        'phase': 'news'
     }
     print(f"\n[UPDATE:INTL] 開始更新國際新聞 - {datetime.now(TAIPEI_TZ).strftime('%H:%M:%S')}")
 
@@ -2031,7 +2040,7 @@ def loading_status():
                         'is_loading': True,
                         'current': progress_current,
                         'total': progress_total,
-                        'phase': '更新資料',
+                        'phase': LOADING_STATUS.get('phase', 'news'), # 預設為新聞階段
                         'current_topic': current_topic_name
                     })
                 else:
@@ -2588,11 +2597,11 @@ def init_scheduler():
     scheduler.add_job(update_international_news, 'cron', minute='30')
     
     # 摘要生成排程（每天 08:00, 12:00, 18:00）
-    scheduler.add_job(update_all_summaries, 'cron', hour=8, minute=15)
-    scheduler.add_job(update_all_summaries, 'cron', hour=12, minute=15)
-    scheduler.add_job(update_all_summaries, 'cron', hour=18, minute=15)
+    scheduler.add_job(update_all_summaries, 'cron', hour=8, minute=0)
+    scheduler.add_job(update_all_summaries, 'cron', hour=12, minute=0)
+    scheduler.add_job(update_all_summaries, 'cron', hour=18, minute=0)
     scheduler.start()
-    print("[SCHEDULER] 排程已啟動 - 國內:每小時0分, 國際:每小時30分, 摘要:08:15/12:15/18:15")
+    print("[SCHEDULER] 排程已啟動 - 國內:每小時0分, 國際:每小時30分, 摘要:08:00/12:00/18:00")
 
 import urllib3
 urllib3.disable_warnings()

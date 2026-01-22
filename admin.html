@@ -1292,10 +1292,14 @@
                 const total = status.total || 0;
 
                 if (status.is_loading) {
-                    statusEl.textContent = `載入中 ${current}/${total}`;
+                    let statusText = '蒐集資料'; // Default
+                    if (status.phase === 'summary') {
+                        statusText = '生成動態中';
+                    }
+                    statusEl.textContent = `${statusText} ${current}/${total}`;
                     statusEl.className = 'status-loading';
                 } else if (total > 0) {
-                    statusEl.textContent = '已載入';
+                    statusEl.textContent = '已更新';
                     statusEl.className = 'status-loaded';
                     // 載入完成後重新讀取專題數據
                     await loadTopics();

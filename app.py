@@ -880,8 +880,6 @@ def update_single_topic_news(topic_id):
 
     print(f"[UPDATE] {cfg['name']} 更新完成")
 
-def load_user_data(user_id):
-    """按需載入使用者的專題資料（非同步背景執行）"""
 def load_user_data(user_id, check_freshness=False):
     """
     載入使用者資料
@@ -926,14 +924,20 @@ def load_user_data(user_id, check_freshness=False):
             'international': {},
             'summaries': {},
             'last_update': '',
-            'is_loading': True
+            'is_loading': True,
+            'phase': 'news'  # 使用者專屬的 phase 狀態
         }
 
         # 嘗試從 Supabase 資料庫載入快取
         print(f"[LOAD] 嘗試從 Supabase 載入使用者 {user_id} 快取...")
         db_cache = auth.load_user_cache(user_id)
         
-        if db_cache:
+        # 區分「無快取」({}) 和「連線失敗」(None)
+        if db_cache is None:
+            print(f"[LOAD] 資料庫連線問題，為使用者 {user_id} 觸發首次載入...")
+            # 連線失敗，仍啟動 Worker 嘗試抓取新資料
+        elif db_cache:
+            # 有快取資料，恢復到記憶體
             loaded_topics = 0
             latest_update_time = ''
             
@@ -960,6 +964,7 @@ def load_user_data(user_id, check_freshness=False):
             # 遞迴呼叫自己，進行新鮮度檢查
             return load_user_data(user_id, check_freshness)
         else:
+            # {} 表示資料庫中確實沒有快取
             print(f"[LOAD] 資料庫無快取，觸發使用者 {user_id} 首次資料載入 (背景執行)...")
             # 保持 is_loading=True，往下執行以啟動背景執行緒
 
@@ -1834,7 +1839,15 @@ def get_all():
 
         # 取得該使用者的資料
         user_data = DATA_STORE.get(user_id, {'topics': {}, 'international': {}, 'summaries': {}, 'last_update': ''})
-        result = {'topics': {}, 'last_update': user_data.get('last_update', '')}
+        
+        # 告知前端是否正在載入中（讓前端知道資料可能不完整）
+        is_loading = user_data.get('is_loading', False)
+        
+        result = {
+            'topics': {}, 
+            'last_update': user_data.get('last_update', ''),
+            'loading_pending': is_loading  # 新增：告知前端背景載入中
+        }
         now = datetime.now(TAIPEI_TZ)
 
         for topic in user_topics:
@@ -2014,17 +2027,17 @@ def refresh_summary():
 
 @app.route('/api/loading-status')
 def loading_status():
-    """回傳載入進度狀態（使用者專屬）"""
+    """回傳載入進度狀態（使用者專屬，不使用全域狀態）"""
     if AUTH_ENABLED:
         token = request.headers.get('Authorization', '').replace('Bearer ', '')
         if token:
             user = auth.get_user_from_token(token)
             if user:
-                # 取得該使用者的專題數量
-                user_topics = auth.get_user_topics(user.id)
+                user_id = user.id
+                user_topics = auth.get_user_topics(user_id)
                 user_topic_count = len(user_topics)
 
-                # 如果使用者專題為 0，顯示完成狀態
+                # 如果使用者專題為 0
                 if user_topic_count == 0:
                     return jsonify({
                         'is_loading': False,
@@ -2034,48 +2047,55 @@ def loading_status():
                         'current_topic': ''
                     })
 
-                # 檢查該使用者的專題中有多少已經載入完成
-                user_id = user.id
-                loaded_count = 0
-
-                # 從快取中檢查該使用者的專題資料
+                # 優先檢查使用者專屬的 is_loading 標記（這是最可靠的指標）
                 if user_id in DATA_STORE:
-                    for topic in user_topics:
-                        topic_id = topic['id']
-                        # 檢查是否有台灣新聞或國際新聞資料
-                        has_tw_news = topic_id in DATA_STORE[user_id].get('topics', {})
-                        has_intl_news = topic_id in DATA_STORE[user_id].get('international', {})
-                        if has_tw_news or has_intl_news:
-                            loaded_count += 1
-
-                # 如果還有專題未載入（不管全域狀態為何，只要使用者資料不全就顯示載入中）
-                if loaded_count < user_topic_count:
-                    # 計算總體進度
-                    progress_current = loaded_count
-                    progress_total = user_topic_count
+                    user_data = DATA_STORE[user_id]
                     
-                    # 嘗試估算當前正在處理的專題（這裡只能給個大概）
-                    current_topic_name = "資料載入中..."
+                    # 如果 is_loading=True，表示背景 Worker 正在執行
+                    if user_data.get('is_loading'):
+                        # 計算已載入的專題數量作為進度
+                        loaded_count = 0
+                        for topic in user_topics:
+                            tid = topic['id']
+                            if tid in user_data.get('topics', {}) or tid in user_data.get('international', {}):
+                                loaded_count += 1
+                        
+                        return jsonify({
+                            'is_loading': True,
+                            'current': loaded_count,
+                            'total': user_topic_count,
+                            'phase': user_data.get('phase', 'news'),
+                            'current_topic': '資料載入中...'
+                        })
                     
-                    return jsonify({
-                        'is_loading': True,
-                        'current': progress_current,
-                        'total': progress_total,
-                        'phase': LOADING_STATUS.get('phase', 'news'), # 預設為新聞階段
-                        'current_topic': current_topic_name
-                    })
-                else:
-                    # 所有專題都已載入完成
-                    return jsonify({
-                        'is_loading': False,
-                        'current': user_topic_count,
-                        'total': user_topic_count,
-                        'phase': '',
-                        'current_topic': ''
-                    })
+                    # is_loading=False，檢查資料完整性
+                    if user_data.get('last_update'):
+                        # 有 last_update 表示載入已完成
+                        return jsonify({
+                            'is_loading': False,
+                            'current': user_topic_count,
+                            'total': user_topic_count,
+                            'phase': '',
+                            'current_topic': ''
+                        })
+                
+                # 使用者不在 DATA_STORE 中，表示尚未開始載入
+                return jsonify({
+                    'is_loading': False,
+                    'current': 0,
+                    'total': user_topic_count,
+                    'phase': '',
+                    'current_topic': ''
+                })
 
-    # 未登入或認證失敗時返回預設狀態
-    return jsonify(LOADING_STATUS)
+    # 未登入時返回基本狀態
+    return jsonify({
+        'is_loading': False,
+        'current': 0,
+        'total': 0,
+        'phase': '',
+        'current_topic': ''
+    })
 
 @app.route('/api/admin/topics', methods=['GET'])
 def get_topics():

@@ -378,12 +378,31 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(() => loadAllData(false), 5 * 60 * 1000);
 });
 
-// 載入進度檢查
-let loadingCheckInterval = null;
+// 載入進度檢查 - 使用 exponential backoff 策略
+let loadingCheckTimeout = null;
+let currentPollInterval = 2000;  // 初始 2 秒
+const MIN_POLL_INTERVAL = 2000;  // 最短 2 秒
+const MAX_POLL_INTERVAL = 10000; // 最長 10 秒
+const BACKOFF_FACTOR = 1.5;      // 增長係數
 
 function startLoadingStatusCheck() {
-    checkLoadingStatus();
-    loadingCheckInterval = setInterval(checkLoadingStatus, 2000);
+    currentPollInterval = MIN_POLL_INTERVAL;
+    scheduleNextCheck();
+}
+
+function scheduleNextCheck() {
+    if (loadingCheckTimeout) {
+        clearTimeout(loadingCheckTimeout);
+    }
+    loadingCheckTimeout = setTimeout(async () => {
+        await checkLoadingStatus();
+        scheduleNextCheck();
+    }, currentPollInterval);
+
+    // 首次立即執行
+    if (currentPollInterval === MIN_POLL_INTERVAL) {
+        checkLoadingStatus();
+    }
 }
 
 let lastLoadingStatus = null;
@@ -402,15 +421,18 @@ async function checkLoadingStatus() {
         if (!statusEl) return;
 
         if (status.is_loading) {
-            let statusText = '蒐集資料'; // Default
+            let statusText = '蒐集資料';
             if (status.phase === 'summary') {
                 statusText = '生成動態中';
             }
             statusEl.textContent = `${statusText} ${status.current}/${status.total}`;
             statusEl.className = 'status-loading';
             lastLoadingStatus = 'loading';
+
+            // 載入中時保持較快輪詢
+            currentPollInterval = MIN_POLL_INTERVAL;
         } else if (status.total > 0) {
-            statusEl.textContent = '已更新'; // Changed from '已載入' to match 'Updated' vibe if user prefers? User said "已更新"
+            statusEl.textContent = '已更新';
             statusEl.className = 'status-loaded';
 
             // 只在從「載入中」變成「已載入」時才重新讀取資料
@@ -418,13 +440,21 @@ async function checkLoadingStatus() {
                 await loadAllData();
                 lastLoadingStatus = 'loaded';
             }
+
+            // 載入完成後逐漸增加輪詢間隔（exponential backoff）
+            currentPollInterval = Math.min(currentPollInterval * BACKOFF_FACTOR, MAX_POLL_INTERVAL);
         } else {
             statusEl.textContent = '尚無專題';
             statusEl.className = '';
             lastLoadingStatus = null;
+
+            // 無專題時也放慢輪詢
+            currentPollInterval = MAX_POLL_INTERVAL;
         }
     } catch (error) {
         console.error('[TopicRadar] 檢查載入狀態失敗:', error);
+        // 錯誤時增加輪詢間隔，避免過度請求
+        currentPollInterval = Math.min(currentPollInterval * BACKOFF_FACTOR, MAX_POLL_INTERVAL);
     }
 }
 

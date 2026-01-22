@@ -415,31 +415,38 @@ def delete_topic(topic_id: str, user_id: str):
 
 # ============ 快取管理 ============
 
-def load_user_cache(user_id: str):
+def load_user_cache(user_id: str, retry_count: int = 1):
     """
     從 Supabase 載入使用者的專題快取
     回傳字典格式: {topic_id: {topics: [], international: [], summary: '', ...}}
+    如果快取為空回傳 {}，如果連線失敗回傳 None（讓呼叫者可以區分）
     """
-    try:
-        supabase = get_supabase()
-        result = supabase.table('topic_cache').select('*').eq('user_id', user_id).execute()
-        
-        cache_map = {}
-        for row in result.data:
-            tid = row['topic_id']
-            cache_map[tid] = {
-                'topics': row.get('domestic_news', []) or [],
-                'international': row.get('intl_news', []) or [],
-                'summary': {
-                    'text': row.get('summary', '') or '',
-                    'updated_at': row.get('summary_updated_at')
-                },
-                'updated_at': row.get('updated_at')
-            }
-        return cache_map
-    except Exception as e:
-        print(f"[AUTH] 載入快取失敗: {e}")
-        return {}
+    for attempt in range(retry_count + 1):
+        try:
+            supabase = get_supabase()
+            result = supabase.table('topic_cache').select('*').eq('user_id', user_id).execute()
+            
+            cache_map = {}
+            for row in result.data:
+                tid = row['topic_id']
+                cache_map[tid] = {
+                    'topics': row.get('domestic_news', []) or [],
+                    'international': row.get('intl_news', []) or [],
+                    'summary': {
+                        'text': row.get('summary', '') or '',
+                        'updated_at': row.get('summary_updated_at')
+                    },
+                    'updated_at': row.get('updated_at')
+                }
+            return cache_map  # 成功：回傳快取 (可能是空的 {})
+        except Exception as e:
+            print(f"[AUTH] 載入快取失敗 (嘗試 {attempt + 1}/{retry_count + 1}): {e}")
+            if attempt < retry_count:
+                import time
+                time.sleep(0.5)  # 短暫等待後重試
+    
+    # 所有重試都失敗，回傳 None 表示連線問題
+    return None
 
 from datetime import datetime
 

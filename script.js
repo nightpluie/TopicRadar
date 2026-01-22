@@ -549,10 +549,16 @@ async function saveNewOrder() {
 
     console.log('[TopicRadar] 準備儲存新順序:', newOrder);
 
+    const token = getAuthToken();
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
         const response = await fetch(`${API_BASE}/api/admin/topics/reorder`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: headers,
             body: JSON.stringify({ order: newOrder })
         });
 

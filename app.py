@@ -889,9 +889,15 @@ def load_user_data(user_id, check_freshness=False):
     """
     global DATA_STORE
 
+    # 1. 檢查是否正在載入中，避免重複請求（Race Condition Fix）
+    if user_id in DATA_STORE and DATA_STORE[user_id].get('is_loading'):
+        # print(f"[LOAD] 使用者 {user_id} 正在載入中，跳過")
+        return True
+
+    should_refresh = False
+
+    # 2. 檢查記憶體快取是否存在且有效
     if user_id in DATA_STORE and DATA_STORE[user_id].get('last_update'):
-        # 記憶體已有資料，檢查是否過期
-        should_refresh = False
         last_update_str = DATA_STORE[user_id]['last_update']
         
         # 設定過期門檻
@@ -911,17 +917,21 @@ def load_user_data(user_id, check_freshness=False):
             return True
             
         print(f"[LOAD] 使用者 {user_id} 資料已過期 (>{threshold_desc})，觸發背景更新...")
-    else:
-        # 嘗試從 Supabase 資料庫載入快取
-        print(f"[LOAD] 嘗試從 Supabase 載入使用者 {user_id} 快取...")
-        db_cache = auth.load_user_cache(user_id)
-        
+    
+    # 3. 如果不在記憶體中，嘗試從資料庫恢復
+    elif user_id not in DATA_STORE:
+        # 預先佔位並標記為載入中，防止並發請求重複進入
         DATA_STORE[user_id] = {
             'topics': {},
             'international': {},
             'summaries': {},
-            'last_update': '' # 稍後更新
+            'last_update': '',
+            'is_loading': True
         }
+
+        # 嘗試從 Supabase 資料庫載入快取
+        print(f"[LOAD] 嘗試從 Supabase 載入使用者 {user_id} 快取...")
+        db_cache = auth.load_user_cache(user_id)
         
         if db_cache:
             loaded_topics = 0
@@ -944,14 +954,20 @@ def load_user_data(user_id, check_freshness=False):
                 
             print(f"[LOAD] 從資料庫恢復了 {loaded_topics} 個專題的資料 (最後更新: {latest_update_time})")
             
+            # 恢復完成，解除載入鎖定
+            DATA_STORE[user_id]['is_loading'] = False
+            
             # 遞迴呼叫自己，進行新鮮度檢查
             return load_user_data(user_id, check_freshness)
         else:
             print(f"[LOAD] 資料庫無快取，觸發使用者 {user_id} 首次資料載入 (背景執行)...")
-            # 不遞迴，直接往下執行以啟動背景執行緒
-    
-    # 啟動背景執行緒（適用於資料過期或全新載入的情況）
-    if user_id in DATA_STORE: # 雙重檢查，確保與上方邏輯一致
+            # 保持 is_loading=True，往下執行以啟動背景執行緒
+
+    # 4. 啟動背景執行緒（適用於資料過期或全新載入的情況）
+    if user_id in DATA_STORE:
+        # 確保標記為載入中
+        DATA_STORE[user_id]['is_loading'] = True
+        
         thread = threading.Thread(target=_load_user_data_worker, args=(user_id,))
         thread.daemon = True
         thread.start()
@@ -1121,6 +1137,11 @@ def _load_user_data_worker(user_id):
         print(f"[WORKER] 載入使用者 {user_id} 資料失敗: {e}")
         import traceback
         traceback.print_exc()
+
+    finally:
+        # 確保無論成功失敗都解除載入鎖定，避免死鎖
+        if user_id in DATA_STORE:
+            DATA_STORE[user_id]['is_loading'] = False
 
 def update_topic_news():
     global LOADING_STATUS

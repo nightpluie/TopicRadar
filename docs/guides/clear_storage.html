@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>清除儲存</title>
+</head>
+<body>
+    <h1>正在清除 localStorage...</h1>
+    <script>
+        localStorage.clear();
+        alert('localStorage 已清除！\n即將導向登入頁。');
+        setTimeout(() => {
+            window.location.href = '/login?t=' + Date.now();
+        }, 500);
+    </script>
+</body>
+</html>

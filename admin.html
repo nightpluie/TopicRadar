@@ -130,6 +130,22 @@
             font-size: 18px;
         }
 
+        .lang-indicators {
+            display: inline-flex;
+            gap: 6px;
+            margin-left: 6px;
+        }
+
+        .lang-pill {
+            padding: 2px 6px;
+            border-radius: 2px;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-dim);
+            background: rgba(0, 242, 255, 0.08);
+        }
+
         .topic-actions button {
             background: none;
             border: none;
@@ -544,6 +560,15 @@
             <label>✅ 正面關鍵字（用逗號分隔）</label>
             <textarea id="edit-keywords" rows="4" placeholder="關鍵字1, 關鍵字2, 關鍵字3"></textarea>
 
+            <label style="margin-top: 15px;">EN 英文關鍵字（用逗號分隔）</label>
+            <textarea id="edit-keywords-en" rows="3" placeholder="keyword1, keyword2, keyword3"></textarea>
+
+            <label style="margin-top: 15px;">JA 日文關鍵字（用逗號分隔）</label>
+            <textarea id="edit-keywords-ja" rows="3" placeholder="キーワード1, キーワード2, キーワード3"></textarea>
+
+            <label style="margin-top: 15px;">KO 韓文關鍵字（用逗號分隔）</label>
+            <textarea id="edit-keywords-ko" rows="3" placeholder="키워드1, 키워드2, 키워드3"></textarea>
+
             <label style="margin-top: 15px;">❌ 負面關鍵字（排除包含這些詞的新聞）</label>
             <textarea id="edit-negative-keywords" rows="3" placeholder="藝人, 明星, 電影, 購物..."></textarea>
             <p style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">
@@ -676,6 +701,42 @@
             };
         }
 
+        function normalizeKeywords(rawKeywords) {
+            if (Array.isArray(rawKeywords)) {
+                return { zh: rawKeywords, en: [], ja: [], ko: [] };
+            }
+            if (typeof rawKeywords === 'string' && rawKeywords.trim()) {
+                return { zh: [rawKeywords.trim()], en: [], ja: [], ko: [] };
+            }
+            if (rawKeywords && typeof rawKeywords === 'object') {
+                return {
+                    zh: Array.isArray(rawKeywords.zh) ? rawKeywords.zh : [],
+                    en: Array.isArray(rawKeywords.en) ? rawKeywords.en : [],
+                    ja: Array.isArray(rawKeywords.ja) ? rawKeywords.ja : [],
+                    ko: Array.isArray(rawKeywords.ko) ? rawKeywords.ko : []
+                };
+            }
+            return { zh: [], en: [], ja: [], ko: [] };
+        }
+
+        function getTopicKeywordsFull(topic) {
+            return normalizeKeywords(topic.keywords_full || topic.keywords);
+        }
+
+        function buildLangIndicators(topic) {
+            const keywords = getTopicKeywordsFull(topic);
+            const labels = [];
+            if (keywords.en.length) labels.push('EN');
+            if (keywords.ja.length) labels.push('JP');
+            if (keywords.ko.length) labels.push('KR');
+            if (!labels.length) return '';
+            return `<span class="lang-indicators">${labels.map(label => `<span class="lang-pill">${label}</span>`).join('')}</span>`;
+        }
+
+        function parseKeywords(value) {
+            return value.split(',').map(k => k.trim()).filter(k => k);
+        }
+
         // === 專題管理相關函數 ===
 
         // 載入所有專題設定
@@ -713,11 +774,13 @@
                 card.className = 'topic-card';
                 card.draggable = false; // 預設不可拖動
                 card.dataset.topicId = id;
+                const langIndicators = buildLangIndicators(topic);
                 card.innerHTML = `
                     <div class="topic-header">
                         <h3>
                             <span class="drag-handle">⋮⋮</span>
-                            ${topic.name}
+                            <span>${topic.name}</span>
+                            ${langIndicators}
                         </h3>
                         <div class="topic-actions">
                             <button onclick="editTopic('${id}')" title="編輯">編輯</button>
@@ -789,7 +852,6 @@
             document.getElementById('add-topic-form').reset();
         }
 
-        // 新增專題（不使用 AI，直接使用專題名稱作為關鍵字）
         async function addTopicWithoutAI() {
             const name = document.getElementById('new-topic-name').value.trim();
 
@@ -809,7 +871,8 @@
                     headers: getAuthHeaders(),
                     body: JSON.stringify({
                         name,
-                        generate_keywords: false
+                        generate_keywords: false,
+                        auto_translate: true  // 啟用自動翻譯
                     })
                 });
 
@@ -909,24 +972,12 @@
 
             pendingEditId = topicId;
             document.getElementById('edit-topic-name').textContent = topic.name;
-            document.getElementById('edit-keywords').value = (topic.keywords || []).join(', ');
-
-            // 加載負面關鍵字（如果有的話）
-            // 從原始資料讀取 negative_keywords
-            fetch(`${API_BASE}/api/admin/topics`, {
-                headers: {
-                    'Authorization': `Bearer ${authToken}`
-                }
-            })
-                .then(r => r.json())
-                .then(data => {
-                    const topicData = data.topics[topicId];
-                    if (topicData && topicData.negative_keywords) {
-                        document.getElementById('edit-negative-keywords').value = topicData.negative_keywords.join(', ');
-                    } else {
-                        document.getElementById('edit-negative-keywords').value = '';
-                    }
-                });
+            const keywords = getTopicKeywordsFull(topic);
+            document.getElementById('edit-keywords').value = keywords.zh.join(', ');
+            document.getElementById('edit-keywords-en').value = keywords.en.join(', ');
+            document.getElementById('edit-keywords-ja').value = keywords.ja.join(', ');
+            document.getElementById('edit-keywords-ko').value = keywords.ko.join(', ');
+            document.getElementById('edit-negative-keywords').value = (topic.negative_keywords || []).join(', ');
 
             document.getElementById('edit-modal').classList.add('active');
             document.getElementById('edit-keywords').focus();
@@ -940,18 +991,14 @@
         async function confirmEdit() {
             if (!pendingEditId) return;
 
-            const keywordsText = document.getElementById('edit-keywords').value;
-            const keywordsArray = keywordsText.split(',').map(k => k.trim()).filter(k => k);
-
-            const negativeKeywordsText = document.getElementById('edit-negative-keywords').value;
-            const negative_keywords = negativeKeywordsText.split(',').map(k => k.trim()).filter(k => k);
-
-            // 構建符合後端格式的關鍵字結構 {zh: [], en: [], ja: []}
+            // 構建符合後端格式的關鍵字結構 {zh: [], en: [], ja: [], ko: []}
             const keywords = {
-                zh: keywordsArray,
-                en: [],
-                ja: []
+                zh: parseKeywords(document.getElementById('edit-keywords').value),
+                en: parseKeywords(document.getElementById('edit-keywords-en').value),
+                ja: parseKeywords(document.getElementById('edit-keywords-ja').value),
+                ko: parseKeywords(document.getElementById('edit-keywords-ko').value)
             };
+            const negative_keywords = parseKeywords(document.getElementById('edit-negative-keywords').value);
 
             try {
                 const response = await fetch(`${API_BASE}/api/admin/topics/${pendingEditId}`, {

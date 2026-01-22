@@ -319,16 +319,32 @@ def generate_topic_id(name):
     prefix = re.sub(r'[^\w]', '', name)[:10]
     return f"{prefix}_{timestamp}"
 
+def normalize_keywords(raw_keywords):
+    """將關鍵字格式統一為 dict（zh/en/ja/ko）"""
+    if isinstance(raw_keywords, dict):
+        return {
+            'zh': raw_keywords.get('zh', []) or [],
+            'en': raw_keywords.get('en', []) or [],
+            'ja': raw_keywords.get('ja', []) or [],
+            'ko': raw_keywords.get('ko', []) or []
+        }
+    if isinstance(raw_keywords, list):
+        return {'zh': raw_keywords, 'en': [], 'ja': [], 'ko': []}
+    if raw_keywords:
+        return {'zh': [raw_keywords], 'en': [], 'ja': [], 'ko': []}
+    return {'zh': [], 'en': [], 'ja': [], 'ko': []}
+
 # ============ AI 關鍵字生成 (Gemini) ============
 
 def generate_keywords_with_ai(topic_name):
-    """使用 Gemini Flash 生成議題相關關鍵字（中英日三語）"""
+    """使用 Gemini Flash 生成議題相關關鍵字（中英日韓四語）"""
     if not GEMINI_API_KEY:
         print("[WARN] 無 Gemini API Key，使用預設關鍵字")
         return {
             'zh': [topic_name],
             'en': [],
-            'ja': []
+            'ja': [],
+            'ko': []
         }
 
     try:
@@ -346,11 +362,13 @@ def generate_keywords_with_ai(topic_name):
 1. 繁體中文關鍵字：10-15 個（核心詞彙、相關單位、同義詞）
 2. 英文關鍵字：8-10 個（對應的英文詞彙，用於搜尋國際新聞）
 3. 日文關鍵字：8-10 個（對應的日文詞彙，用於搜尋日本新聞）
+4. 韓文關鍵字：8-10 個（對應的韓文詞彙，用於搜尋韓國新聞）
 
 格式（請嚴格遵守）：
 ZH: 關鍵字1, 關鍵字2, 關鍵字3
 EN: keyword1, keyword2, keyword3
 JA: キーワード1, キーワード2, キーワード3
+KO: 키워드1, 키워드2, 키워드3
 
 直接輸出，不要有其他開場白或解釋。"""
 
@@ -362,7 +380,7 @@ JA: キーワード1, キーワード2, キーワード3
             }],
             "generationConfig": {
                 "temperature": 0.3,
-                "maxOutputTokens": 800
+                "maxOutputTokens": 1000
             }
         }
 
@@ -372,8 +390,8 @@ JA: キーワード1, キーワード2, キーワード3
         data = response.json()
         content = data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
 
-        # 解析三語關鍵字
-        keywords = {'zh': [], 'en': [], 'ja': []}
+        # 解析四語關鍵字
+        keywords = {'zh': [], 'en': [], 'ja': [], 'ko': []}
         for line in content.split('\n'):
             line = line.strip()
             if line.startswith('ZH:'):
@@ -382,12 +400,14 @@ JA: キーワード1, キーワード2, キーワード3
                 keywords['en'] = [kw.strip() for kw in line[3:].split(',') if kw.strip()]
             elif line.startswith('JA:'):
                 keywords['ja'] = [kw.strip() for kw in line[3:].split(',') if kw.strip()]
+            elif line.startswith('KO:'):
+                keywords['ko'] = [kw.strip() for kw in line[3:].split(',') if kw.strip()]
 
         # 確保至少有基本關鍵字
         if not keywords['zh']:
             keywords['zh'] = [topic_name]
 
-        print(f"[AI] Gemini 為「{topic_name}」生成了關鍵字: ZH={len(keywords['zh'])}, EN={len(keywords['en'])}, JA={len(keywords['ja'])}")
+        print(f"[AI] Gemini 為「{topic_name}」生成了關鍵字: ZH={len(keywords['zh'])}, EN={len(keywords['en'])}, JA={len(keywords['ja'])}, KO={len(keywords['ko'])}")
         return keywords
 
     except Exception as e:
@@ -395,15 +415,33 @@ JA: キーワード1, キーワード2, キーワード3
         return {
             'zh': [topic_name],
             'en': [],
-            'ja': []
+            'ja': [],
+            'ko': []
         }
 
 # ============ Gemini Flash 翻譯 ============
 
-def translate_with_gemini(text, source_lang='auto', max_retries=3):
-    """使用 Gemini Flash 翻譯標題到繁體中文"""
+def translate_with_gemini(text, source_lang='auto', target_lang='zh-TW', max_retries=3):
+    """使用 Gemini Flash 翻譯文字到指定語言
+    
+    Args:
+        text: 要翻譯的文字
+        source_lang: 來源語言（預設 auto）
+        target_lang: 目標語言，支援：'zh-TW'（繁體中文）, 'en'（英文）, 'ja'（日文）, 'ko'（韓文）
+        max_retries: 最大重試次數
+    """
     if not GEMINI_API_KEY:
         return f"[未翻譯] {text}"
+
+    # 語言名稱對應
+    lang_names = {
+        'zh-TW': '繁體中文',
+        'en': 'English',
+        'ja': '日本語',
+        'ko': '한국어'
+    }
+    
+    target_lang_name = lang_names.get(target_lang, '繁體中文')
 
     for attempt in range(max_retries):
         try:
@@ -419,7 +457,7 @@ def translate_with_gemini(text, source_lang='auto', max_retries=3):
             payload = {
                 "contents": [{
                     "parts": [{
-                        "text": f"請將以下新聞標題翻譯成繁體中文，只輸出翻譯結果，不要有任何其他說明：\n\n{text}"
+                        "text": f"請將以下文字翻譯成{target_lang_name}，只輸出翻譯結果，不要有任何其他說明：\n\n{text}"
                     }]
                 }],
                 "generationConfig": {
@@ -452,6 +490,59 @@ def translate_with_gemini(text, source_lang='auto', max_retries=3):
             return f"[翻譯失敗] {text}"
     
     return f"[翻譯失敗] {text}"
+
+
+def auto_translate_keywords(chinese_keywords):
+    """自動將中文關鍵字翻譯成英日韓三語
+    
+    Args:
+        chinese_keywords: 中文關鍵字列表
+        
+    Returns:
+        包含四語關鍵字的字典 {'zh': [...], 'en': [...], 'ja': [...], 'ko': [...]}
+    """
+    if not isinstance(chinese_keywords, list) or not chinese_keywords:
+        return {'zh': [], 'en': [], 'ja': [], 'ko': []}
+    
+    # 合併中文關鍵字作為翻譯源
+    source_text = ', '.join(chinese_keywords)
+    
+    try:
+        # 翻譯成英文
+        en_keywords = []
+        en_result = translate_with_gemini(source_text, target_lang='en')
+        if en_result and not en_result.startswith('[翻譯失敗]') and not en_result.startswith('[未翻譯]'):
+            en_keywords = [kw.strip() for kw in en_result.split(',') if kw.strip()]
+        
+        # 翻譯成日文
+        ja_keywords = []
+        ja_result = translate_with_gemini(source_text, target_lang='ja')
+        if ja_result and not ja_result.startswith('[翻譯失敗]') and not ja_result.startswith('[未翻譯]'):
+            ja_keywords = [kw.strip() for kw in ja_result.split(',') if kw.strip()]
+        
+        # 翻譯成韓文
+        ko_keywords = []
+        ko_result = translate_with_gemini(source_text, target_lang='ko')
+        if ko_result and not ko_result.startswith('[翻譯失敗]') and not ko_result.startswith('[未翻譯]'):
+            ko_keywords = [kw.strip() for kw in ko_result.split(',') if kw.strip()]
+        
+        print(f"[AUTO-TRANSLATE] 已翻譯關鍵字: EN={len(en_keywords)}, JA={len(ja_keywords)}, KO={len(ko_keywords)}")
+        
+        return {
+            'zh': chinese_keywords,
+            'en': en_keywords,
+            'ja': ja_keywords,
+            'ko': ko_keywords
+        }
+    except Exception as e:
+        print(f"[ERROR] 自動翻譯關鍵字失敗: {e}")
+        return {
+            'zh': chinese_keywords,
+            'en': [],
+            'ja': [],
+            'ko': []
+        }
+
 
 # ============ Perplexity AI 摘要 ============
 
@@ -2117,10 +2208,8 @@ def get_topics():
             keywords = topic.get('keywords', {})
             
             # 處理關鍵字格式
-            if isinstance(keywords, dict):
-                display_keywords = keywords.get('zh', [])
-            else:
-                display_keywords = keywords if keywords else []
+            keywords_full = normalize_keywords(keywords)
+            display_keywords = keywords_full.get('zh', [])
             
             # 取得摘要（從本地快取）
             summary_data = DATA_STORE['summaries'].get(tid, {})
@@ -2131,6 +2220,7 @@ def get_topics():
             result[tid] = {
                 'name': topic['name'],
                 'keywords': display_keywords,
+                'keywords_full': keywords_full,
                 'negative_keywords': topic.get('negative_keywords', []),
                 'icon': topic.get('icon', '📌'),
                 'summary': summary_data.get('text', ''),
@@ -2146,10 +2236,8 @@ def get_topics():
         result = {}
         for tid, cfg in TOPICS.items():
             keywords = cfg.get('keywords', [])
-            if isinstance(keywords, dict):
-                display_keywords = keywords.get('zh', [])
-            else:
-                display_keywords = keywords
+            keywords_full = normalize_keywords(keywords)
+            display_keywords = keywords_full.get('zh', [])
 
             summary_data = DATA_STORE['summaries'].get(tid, {})
             news_count = len(DATA_STORE['topics'].get(tid, []))
@@ -2157,6 +2245,7 @@ def get_topics():
             result[tid] = {
                 'name': cfg['name'],
                 'keywords': display_keywords,
+                'keywords_full': keywords_full,
                 'negative_keywords': cfg.get('negative_keywords', []),
                 'icon': cfg.get('icon', ''),
                 'summary': summary_data.get('text', ''),
@@ -2189,12 +2278,21 @@ def add_topic():
             # AI 生成關鍵字
             keywords = generate_keywords_with_ai(name)
         else:
-            # 使用專題名稱作為唯一關鍵字
-            keywords = {
-                'zh': [name],
-                'en': [],
-                'ja': []
-            }
+            # 檢查是否需要自動翻譯
+            auto_translate = data.get('auto_translate', False)
+            
+            if auto_translate:
+                # 使用專題名稱作為中文關鍵字，並自動翻譯成其他語言
+                print(f"[AUTO-TRANSLATE] 為專題「{name}」自動翻譯關鍵字...")
+                keywords = auto_translate_keywords([name])
+            else:
+                # 只使用專題名稱作為中文關鍵字
+                keywords = {
+                    'zh': [name],
+                    'en': [],
+                    'ja': [],
+                    'ko': []
+                }
 
         # 計算新專題的 order
         user_topics = auth.get_user_topics(user.id)
@@ -2240,7 +2338,26 @@ def add_topic():
         if not name:
             return jsonify({'error': 'Empty name'}), 400
 
-        keywords = generate_keywords_with_ai(name)
+        # 檢查是否使用 AI 生成關鍵字
+        generate_keywords = data.get('generate_keywords', True)
+        
+        if generate_keywords:
+            keywords = generate_keywords_with_ai(name)
+        else:
+            # 檢查是否需要自動翻譯
+            auto_translate = data.get('auto_translate', False)
+            
+            if auto_translate:
+                print(f"[AUTO-TRANSLATE] 為專題「{name}」自動翻譯關鍵字...")
+                keywords = auto_translate_keywords([name])
+            else:
+                keywords = {
+                    'zh': [name],
+                    'en': [],
+                    'ja': [],
+                    'ko': []
+                }
+        
         max_order = max([t.get('order', 0) for t in TOPICS.values()], default=-1)
         new_order = max_order + 1
 
@@ -2660,4 +2777,3 @@ if __name__ == '__main__':
     # 使用者登入時才會載入他們的專題資料
     print("[SERVER] 伺服器啟動中... (使用按需載入策略，使用者登入時才載入資料)")
     app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
-

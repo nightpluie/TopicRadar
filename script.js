@@ -247,10 +247,10 @@ async function loadAllData(checkFreshness = false) {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        // 構建請求 URL，如果是初始載入 (checkFreshness=true) 則帶上參數
-        let url = `${API_BASE}/api/all`;
+        // 構建請求 URL，加上時間戳防止快取
+        let url = `${API_BASE}/api/all?_t=${new Date().getTime()}`;
         if (checkFreshness) {
-            url += '?check_freshness=true';
+            url += '&check_freshness=true';
         }
 
         const response = await fetch(url, { headers });

@@ -2399,6 +2399,42 @@ def add_topic():
                 keywords = {
                     'zh': [name],
                     'en': [],
+                    'ja': [],
+                    'ko': []
+                }
+        
+        max_order = max([t.get('order', 0) for t in TOPICS.values()], default=-1)
+        new_order = max_order + 1
+
+        tid = generate_topic_id(name)
+        TOPICS[tid] = {'name': name, 'keywords': keywords, 'order': new_order}
+        save_topics_config()
+
+        # ✨ 在背景執行緒中更新新聞和生成摘要，避免阻塞 API 回應  
+        def background_init():
+            try:
+                # 更新新專題的新聞
+                update_single_topic_news(tid)
+                
+                # 為新專題生成摘要
+                if PERPLEXITY_API_KEY:
+                    print(f"[INIT] 為新專題「{name}」生成 AI 摘要...")
+                    summary_text = generate_topic_summary(tid)
+                    DATA_STORE['summaries'][tid] = {
+                        'text': summary_text,
+                        'updated_at': datetime.now(TAIPEI_TZ).isoformat()
+                    }
+                    save_data_cache()
+                    
+                print(f"[INIT] 專題「{name}」初始化完成")
+            except Exception as e:
+                print(f"[ERROR] 專題「{name}」背景初始化失敗: {e}")
+        
+        # 啟動背景執行緒
+        thread = threading.Thread(target=background_init, daemon=True)
+        thread.start()
+
+        # 立即回應前端，不等待新聞和摘要
         return jsonify({'status': 'ok'})
 
 @app.route('/api/admin/topics/<tid>', methods=['PUT'])

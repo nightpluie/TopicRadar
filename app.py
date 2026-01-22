@@ -2351,9 +2351,23 @@ def add_topic():
         
         # ✨ 在背景執行緒中更新新聞和生成摘要，避免阻塞 API 回應
         def background_init():
+            global LOADING_STATUS
             try:
+                # 更新狀態欄：顯示正在處理新專題
+                LOADING_STATUS = {
+                    'is_loading': True,
+                    'current': 1,
+                    'total': 2,
+                    'current_topic': name,
+                    'phase': '蒐集資料中'
+                }
+                
                 # 更新新專題的新聞
                 update_single_topic_news(tid)
+                
+                # 更新狀態：準備生成摘要
+                LOADING_STATUS['current'] = 2
+                LOADING_STATUS['phase'] = '生成動態中'
                 
                 # 為新專題生成摘要
                 if PERPLEXITY_API_KEY:
@@ -2364,10 +2378,21 @@ def add_topic():
                         'updated_at': datetime.now(TAIPEI_TZ).isoformat()
                     }
                     save_data_cache()
+                
+                # 完成：清除載入狀態
+                LOADING_STATUS = {
+                    'is_loading': False,
+                    'current': 2,
+                    'total': 2,
+                    'current_topic': '',
+                    'phase': ''
+                }
                     
                 print(f"[INIT] 專題「{name}」初始化完成")
             except Exception as e:
                 print(f"[ERROR] 專題「{name}」背景初始化失敗: {e}")
+                # 發生錯誤時也要清除載入狀態
+                LOADING_STATUS['is_loading'] = False
         
         # 啟動背景執行緒
         thread = threading.Thread(target=background_init, daemon=True)
@@ -2412,9 +2437,23 @@ def add_topic():
 
         # ✨ 在背景執行緒中更新新聞和生成摘要，避免阻塞 API 回應  
         def background_init():
+            global LOADING_STATUS
             try:
+                # 更新狀態欄：顯示正在處理新專題
+                LOADING_STATUS = {
+                    'is_loading': True,
+                    'current': 1,
+                    'total': 2,
+                    'current_topic': name,
+                    'phase': '蒐集資料中'
+                }
+                
                 # 更新新專題的新聞
                 update_single_topic_news(tid)
+                
+                # 更新狀態：準備生成摘要
+                LOADING_STATUS['current'] = 2
+                LOADING_STATUS['phase'] = '生成動態中'
                 
                 # 為新專題生成摘要
                 if PERPLEXITY_API_KEY:
@@ -2425,10 +2464,21 @@ def add_topic():
                         'updated_at': datetime.now(TAIPEI_TZ).isoformat()
                     }
                     save_data_cache()
+                
+                # 完成：清除載入狀態
+                LOADING_STATUS = {
+                    'is_loading': False,
+                    'current': 2,
+                    'total': 2,
+                    'current_topic': '',
+                    'phase': ''
+                }
                     
                 print(f"[INIT] 專題「{name}」初始化完成")
             except Exception as e:
                 print(f"[ERROR] 專題「{name}」背景初始化失敗: {e}")
+                # 發生錯誤時也要清除載入狀態
+                LOADING_STATUS['is_loading'] = False
         
         # 啟動背景執行緒
         thread = threading.Thread(target=background_init, daemon=True)

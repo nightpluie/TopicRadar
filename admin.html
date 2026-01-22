@@ -622,7 +622,7 @@
             sortedTopics.forEach(([id, topic]) => {
                 const card = document.createElement('div');
                 card.className = 'topic-card';
-                card.draggable = true;
+                card.draggable = false; // 預設不可拖動
                 card.dataset.topicId = id;
                 card.innerHTML = `
                     <div class="topic-header">
@@ -653,6 +653,22 @@
                 card.addEventListener('dragover', handleDragOver);
                 card.addEventListener('dragleave', handleDragLeave);
                 card.addEventListener('drop', handleDrop);
+
+                // 只有從 drag-handle 開始拖動時才啟用 draggable
+                const dragHandle = card.querySelector('.drag-handle');
+                if (dragHandle) {
+                    dragHandle.addEventListener('mousedown', () => {
+                        card.draggable = true;
+                    });
+                    dragHandle.addEventListener('mouseup', () => {
+                        card.draggable = false;
+                    });
+                }
+
+                // 當拖動結束後重設 draggable
+                card.addEventListener('dragend', () => {
+                    card.draggable = false;
+                });
 
                 container.appendChild(card);
             });

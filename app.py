@@ -882,22 +882,27 @@ def update_single_topic_news(topic_id):
 
 def load_user_data(user_id):
     """按需載入使用者的專題資料（非同步背景執行）"""
+def load_user_data(user_id, check_freshness=False):
+    """
+    載入使用者資料
+    check_freshness: True=登入檢查(5分門檻), False=一般輪詢(60分門檻)
+    """
     global DATA_STORE
 
-    # 檢查是否已經載入
-    if user_id in DATA_STORE:
-        # 檢查資料新鮮度
-        user_data = DATA_STORE[user_id]
-        last_update_str = user_data.get('last_update')
-        
+    if user_id in DATA_STORE and DATA_STORE[user_id].get('last_update'):
+        # 記憶體已有資料，檢查是否過期
         should_refresh = False
-        if not last_update_str:
-            should_refresh = True
-        else:
+        last_update_str = DATA_STORE[user_id]['last_update']
+        
+        # 設定過期門檻
+        threshold_seconds = 300 if check_freshness else 3600
+        threshold_desc = "5分鐘" if check_freshness else "60分鐘"
+
+        if last_update_str:
             try:
                 last_update = datetime.fromisoformat(last_update_str)
-                # 如果資料超過 5 分鐘未更新，則觸發背景更新
-                if (datetime.now(TAIPEI_TZ) - last_update).total_seconds() > 3600:
+                # 檢查資料是否超過門檻
+                if (datetime.now(TAIPEI_TZ) - last_update).total_seconds() > threshold_seconds:
                     should_refresh = True
             except ValueError:
                 should_refresh = True
@@ -905,7 +910,7 @@ def load_user_data(user_id):
         if not should_refresh:
             return True
             
-        print(f"[LOAD] 使用者 {user_id} 資料已過期 (>60m)，觸發背景更新...")
+        print(f"[LOAD] 使用者 {user_id} 資料已過期 (>{threshold_desc})，觸發背景更新...")
     else:
         # 嘗試從 Supabase 資料庫載入快取
         print(f"[LOAD] 嘗試從 Supabase 載入使用者 {user_id} 快取...")
@@ -943,7 +948,7 @@ def load_user_data(user_id):
             # 保持 last_update 為空，讓遞迴後的檢查觸發更新
 
         # 遞迴呼叫自己，進行新鮮度檢查
-        return load_user_data(user_id)
+        return load_user_data(user_id, check_freshness)
     
     # 啟動背景執行緒（適用於資料過期或全新載入的情況）
     if user_id in DATA_STORE: # 雙重檢查，確保與上方邏輯一致
@@ -1786,9 +1791,13 @@ def get_all():
 
         user_id = user.id
 
-        # 按需載入：總是呼叫 load_user_data，由該函式決定是否需要背景更新
-        # 這實現了「先顯示快取，背景檢查更新」的邏輯
-        load_user_data(user_id)
+        # 讀取前端傳來的 check_freshness 參數 (字串 'true' 轉布林值)
+        check_freshness = request.args.get('check_freshness', 'false').lower() == 'true'
+
+        # 按需載入：總是呼叫 load_user_data
+        # check_freshness=True: 登入時檢查 (5分鐘門檻)
+        # check_freshness=False: 定期輪詢 (60分鐘門檻)
+        load_user_data(user_id, check_freshness)
 
         # 從 Supabase 讀取該使用者的專題
         user_topics = auth.get_user_topics(user_id)

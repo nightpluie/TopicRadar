@@ -237,7 +237,7 @@ function getAuthToken() {
 }
 
 // 載入所有資料並動態生成專題卡片
-async function loadAllData() {
+async function loadAllData(checkFreshness = false) {
     const container = document.getElementById('dashboard-container');
     const token = getAuthToken();
 
@@ -247,12 +247,18 @@ async function loadAllData() {
             headers['Authorization'] = `Bearer ${token}`;
         }
 
-        const response = await fetch(`${API_BASE}/api/all`, { headers });
+        // 構建請求 URL，如果是初始載入 (checkFreshness=true) 則帶上參數
+        let url = `${API_BASE}/api/all`;
+        if (checkFreshness) {
+            url += '?check_freshness=true';
+        }
+
+        const response = await fetch(url, { headers });
 
         // 如果未登入（401），重定向到登入頁
         if (response.status === 401) {
             console.log('[TopicRadar] 未登入，重定向到登入頁...');
-            window.location.href = '/login';
+            logout(); // 使用 logout 函數處理
             return;
         }
 
@@ -361,15 +367,15 @@ async function refreshSummary() {
 document.addEventListener('DOMContentLoaded', () => {
     console.log('[TopicRadar] 專題雷達啟動中...');
     displayUserInfo();
-    loadAllData();
+    loadAllData(true); // 首次載入：檢查 5 分鐘新鮮度
     startLoadingStatusCheck();
 
     // 即時時鐘啟動
     updateRealtimeClock();
     setInterval(updateRealtimeClock, 1000);
 
-    // 每 5 分鐘自動刷新
-    setInterval(loadAllData, 5 * 60 * 1000);
+    // 每 5 分鐘自動刷新 (只讀取，保守更新)
+    setInterval(() => loadAllData(false), 5 * 60 * 1000);
 });
 
 // 載入進度檢查

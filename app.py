@@ -920,17 +920,24 @@ def load_user_data(user_id):
         
         if db_cache:
             loaded_topics = 0
+            latest_update_time = ''
+            
             for tid, data in db_cache.items():
                 DATA_STORE[user_id]['topics'][tid] = data['topics']
                 DATA_STORE[user_id]['international'][tid] = data['international']
                 DATA_STORE[user_id]['summaries'][tid] = data['summary']
+                
+                # 追蹤最新的更新時間
+                t_updated = data.get('updated_at', '')
+                if t_updated and t_updated > latest_update_time:
+                    latest_update_time = t_updated
+                    
                 loaded_topics += 1
             
-            # 簡單設定一個最後更新時間（取當前時間或保留空值讓下方邏輯觸發更新）
-            # 這裡我們設定為當前時間，但如果資料庫沒存 last_update，其實應該讓它刷新
-            # 為了保險起見，我們讓它顯示出來，但稍後檢查機制會判定是否需要刷新
-            # (P.S. 這裡沒存整體的 last_update，所以會被視為 stale，觸發背景更新，這是好事)
-            print(f"[LOAD] 從資料庫恢復了 {loaded_topics} 個專題的資料")
+            if latest_update_time:
+                DATA_STORE[user_id]['last_update'] = latest_update_time
+                
+            print(f"[LOAD] 從資料庫恢復了 {loaded_topics} 個專題的資料 (最後更新: {latest_update_time})")
         else:
             print(f"[LOAD] 資料庫無快取，觸發使用者 {user_id} 首次資料載入 (背景執行)...")
             # 保持 last_update 為空，讓遞迴後的檢查觸發更新

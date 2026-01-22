@@ -433,7 +433,8 @@ def load_user_cache(user_id: str):
                 'summary': {
                     'text': row.get('summary', '') or '',
                     'updated_at': row.get('summary_updated_at')
-                }
+                },
+                'updated_at': row.get('updated_at')
             }
         return cache_map
     except Exception as e:

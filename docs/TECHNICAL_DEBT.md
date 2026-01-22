@@ -25,7 +25,7 @@
 
 ### 高優先級
 
-#### 1. app.py 過於龐大（2,876 行）
+#### 1. app.py 過於龐大（2,889 行）
 **問題**：
 - 所有後端邏輯集中在單一檔案
 - 難以維護和測試
@@ -56,26 +56,13 @@ app/
     └── scheduler.py
 ```
 
-#### 2. 混合資料儲存策略
-**問題**：
-- 記憶體資料（DATA_STORE）伺服器重啟後消失
-- JSON 檔案（topics_config.json）與 Supabase 資料分離
-- 資料一致性難以保證
-
-**影響**：
-- 部署到 Render 後新聞資料不會持久化
-- 使用者體驗不佳（重啟後需重新抓取）
-
-**建議方案**：
-- 選項 A：全部遷移到 Supabase（新增 `news` 和 `summaries` 表）
-- 選項 B：使用 Redis 作為快取層（需要額外服務）
-- 選項 C：維持現狀，但增加定期備份機制
+**備註**：需先建立測試框架再進行重構（v2.3 或 v3.0）
 
 ---
 
 ### 中優先級
 
-#### 3. 缺乏單元測試
+#### 2. 缺乏單元測試
 **問題**：
 - 零測試覆蓋率
 - 重構風險極高
@@ -86,18 +73,9 @@ app/
 - 優先測試核心功能（RSS 抓取、關鍵字過濾）
 - 目標：至少 50% 覆蓋率
 
-#### 4. API Rate Limiting 不足
-**問題**：
-- Gemini/Perplexity API 沒有請求限制
-- 可能觸發第三方 API 限制
-- 缺少錯誤次數追蹤
+**預估工作量**：v2.2 版本，約 4-6 小時
 
-**建議方案**：
-- 實作簡單的 rate limiter
-- 追蹤 API 使用量
-- 優雅降級處理
-
-#### 5. 前端狀態管理混亂
+#### 3. 前端狀態管理混亂
 **問題**：
 - 全域變數散落各處
 - DOM 操作直接耦合邏輯
@@ -107,11 +85,13 @@ app/
 - 考慮輕量級框架（Alpine.js 或 Petite Vue）
 - 或建立簡單的狀態管理模式
 
+**備註**：優先級較低，目前系統運作穩定
+
 ---
 
 ### 低優先級
 
-#### 6. 缺少錯誤監控
+#### 4. 缺少錯誤監控
 **問題**：
 - 只有 console.log
 - 無法追蹤生產環境錯誤
@@ -120,109 +100,221 @@ app/
 - 整合 Sentry（免費方案）
 - 或簡單的錯誤日誌系統
 
-#### 7. 環境變數管理
-**問題**：
-- .env 檔案沒有驗證
-- 缺少預設值處理
+---
 
-**建議方案**：
-- 使用 pydantic-settings
-- 啟動時驗證必要環境變數
+## 立即可執行的優化（Quick Wins）
+
+以下三項優化**不需要大規模重構**，可以明天處理：
+
+### 1. RSS 並行抓取（高效能提升）⭐
+
+**目前狀況**：
+- 逐一抓取 10 個台灣 RSS 來源
+- 每個來源 2-5 秒
+- 總耗時：20-50 秒
+
+**優化方案**：
+使用 `ThreadPoolExecutor` 並行處理
+
+```python
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def fetch_rss_parallel(sources_dict, max_workers=5):
+    """並行抓取多個 RSS 來源"""
+    all_news = []
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_source = {
+            executor.submit(fetch_rss, url, name, max_items=50): name
+            for name, url in sources_dict.items()
+        }
+        
+        for future in as_completed(future_to_source, timeout=20):
+            source_name = future_to_source[future]
+            try:
+                news_items = future.result()
+                all_news.extend(news_items)
+            except Exception as e:
+                print(f"[PARALLEL] {source_name} 失敗: {e}")
+    
+    return all_news
+
+# 使用方式：
+all_news_tw = fetch_rss_parallel(RSS_SOURCES_TW, max_workers=5)
+```
+
+**預期效果**：
+- 總耗時：10-15 秒
+- 效能提升：**2-3 倍**
+- 工作量：30-60 分鐘
+- 風險：低
+
+**修改位置**：
+- `app.py` 約第 720 行：新增 `fetch_rss_parallel()` 函數
+- `app.py` 第 1584-1585 行：修改 `update_domestic_news()`
+- `app.py` 國際新聞處理：修改 `update_international_news()`
+
+---
+
+### 2. 環境變數驗證（減少配置錯誤）⭐
+
+**目前狀況**：
+- 啟動後才發現缺少 API Key
+- 錯誤訊息不明確
+
+**優化方案**：
+```python
+import sys
+
+def validate_env():
+    """啟動時驗證必要環境變數"""
+    required = {
+        'GEMINI_API_KEY': 'AI 關鍵字生成與翻譯',
+        'PERPLEXITY_API_KEY': 'AI 摘要生成',
+    }
+    
+    optional = {
+        'SUPABASE_URL': '多使用者認證系統',
+        'SUPABASE_KEY': '多使用者認證系統',
+    }
+    
+    missing = []
+    for key, desc in required.items():
+        if not os.getenv(key):
+            missing.append(f"  - {key} ({desc})")
+    
+    if missing:
+        print("=" * 60)
+        print("錯誤：缺少必要環境變數")
+        print("=" * 60)
+        print("\n".join(missing))
+        print("\n請檢查 .env 檔案，參考 .env.example")
+        print("=" * 60)
+        sys.exit(1)
+    
+    # 顯示選用變數狀態
+    print("[ENV] 環境變數檢查通過")
+    for key, desc in optional.items():
+        status = "✓" if os.getenv(key) else "✗"
+        print(f"[ENV] {status} {key} ({desc})")
+
+# 在 if __name__ == '__main__': 之前調用
+if __name__ == '__main__':
+    validate_env()  # 先驗證
+    app.run(...)
+```
+
+**預期效果**：
+- 立即發現配置問題
+- 友善的錯誤訊息
+- 避免執行時錯誤
+- 工作量：20-30 分鐘
+- 風險：極低
+
+**修改位置**：
+- `app.py` 約第 2860 行：新增 `validate_env()` 函數
+- `app.py` 第 2885 行：在 `if __name__ == '__main__':` 前調用
+
+---
+
+### 3. API 錯誤處理統一（改善穩定性）⭐
+
+**目前狀況**：
+- 每個 API 端點自行處理錯誤
+- 回應格式不一致
+- 重複的錯誤處理程式碼
+
+**優化方案**：
+```python
+from functools import wraps
+
+def handle_api_errors(f):
+    """統一 API 錯誤處理裝飾器"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except ValueError as e:
+            return jsonify({
+                'error': str(e),
+                'code': 'INVALID_INPUT'
+            }), 400
+        except KeyError as e:
+            return jsonify({
+                'error': f'缺少必要參數: {str(e)}',
+                'code': 'MISSING_PARAMETER'
+            }), 400
+        except Exception as e:
+            print(f"[ERROR] {f.__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                'error': '伺服器內部錯誤',
+                'code': 'INTERNAL_ERROR'
+            }), 500
+    return decorated
+
+# 使用範例：
+@app.route('/api/admin/topics', methods=['POST'])
+@handle_api_errors  # 新增裝飾器
+def add_topic():
+    # 自動處理錯誤
+    data = request.json
+    name = data['name']  # KeyError 會被自動捕獲
+    ...
+```
+
+**預期效果**：
+- 統一錯誤格式
+- 減少重複程式碼
+- 更好的除錯體驗
+- 自動記錄錯誤堆疊
+- 工作量：1-2 小時
+- 風險：低
+
+**修改位置**：
+- `app.py` 約第 2200 行：新增 `handle_api_errors()` 裝飾器
+- 逐步為各 API 端點添加裝飾器（約 15-20 個端點）
+
+---
 
 ---
 
 ## 效能優化建議
 
 ### 已完成優化（v2.1）
-- ✅ 翻譯速度 3 倍提升
-- ✅ 新增專題 15 倍提升
-- ✅ 背景執行緒處理
+- ✅ 翻譯速度 3 倍提升（一次 API 請求翻譯三語）
+- ✅ 新增專題 15 倍提升（背景執行緒處理）
+- ✅ 前端自動刷新（每 5 分鐘輪詢）
+- ✅ 資料持久化（Supabase topic_cache 表）
 
-### 可進一步優化
+### 待優化項目
 
-#### 1. RSS 抓取並行化
-**目前**：逐個抓取 RSS（12 個來源）
-**優化**：使用 `concurrent.futures` 並行抓取
-**預期**：抓取時間從 30-60 秒降至 10-15 秒
-
-#### 2. 前端輪詢優化
-**目前**：無自動刷新
-**建議**：每 5 分鐘自動輪詢 `/api/all`
-**好處**：使用者不需手動刷新
-
-#### 3. 資料庫查詢優化
-**目前**：每次請求都查詢所有專題
-**建議**：實作簡單的應用層快取（5 分鐘 TTL）
-
----
-
-## 代碼簡化評估
-
-### 是否需要啟動 code-simplifier 技能？
-
-**建議**：**暫時不需要**
-
-**理由**：
-1. **程式碼品質尚可**：雖然檔案大，但邏輯清晰
-2. **功能穩定**：v2.1 已完成重大優化
-3. **重構風險高**：缺乏測試，大規模重構可能引入 bug
-
-### 建議的漸進式改進策略
-
-#### 階段 1：準備工作（v2.2）
-- [ ] 建立基礎測試框架
-- [ ] 核心功能單元測試（RSS、過濾）
-- [ ] 整合測試（API 端點）
-
-#### 階段 2：模組化（v2.3）
-- [ ] 提取 AI 整合邏輯到 `services/ai.py`
-- [ ] 提取 RSS 邏輯到 `services/news.py`
-- [ ] 提取路由到 `routes/` 資料夾
-
-#### 階段 3：資料層優化（v3.0）
-- [ ] 新聞資料遷移到 Supabase
-- [ ] 實作快取策略
-- [ ] 移除 JSON 檔案依賴
-
----
-
-## 立即可執行的小改進
-
-### Quick Wins（不需要大規模重構）
-
-1. **增加 RSS 並行抓取**
-   - 修改 `update_all_news_domestic()` 使用 ThreadPoolExecutor
-   - 預估工作量：1 小時
-   - 效能提升：3-4 倍
-
-2. **增加 API 錯誤處理**
-   - 統一錯誤回應格式
-   - 增加請求驗證
-   - 預估工作量：2 小時
-
-3. **前端自動刷新**
-   - 添加輪詢機制
-   - Toast 通知更新
-   - 預估工作量：1 小時
-
-4. **環境變數驗證**
-   - 啟動時檢查必要變數
-   - 提供友善錯誤訊息
-   - 預估工作量：30 分鐘
+以上三個 Quick Wins 項目已納入技術債務文件，預計明天處理。
 
 ---
 
 ## 總結
 
+### 已修正的項目
+- ~~混合資料儲存~~：已使用 Supabase `topic_cache` 表持久化
+- ~~前端自動刷新~~：已實作（每 5 分鐘 + 初次載入檢查）
+
 ### 技術債務優先順序
-1. 🔴 **app.py 模組化**（重要但風險高，需先建立測試）
-2. 🟡 **資料持久化**（可選，目前可接受）
-3. 🟢 **效能優化**（RSS 並行化，立即可做）
+1. 🟢 **Quick Wins**（明天處理，3-4 小時）
+   - RSS 並行抓取
+   - 環境變數驗證
+   - API 錯誤處理統一
+
+2. 🟡 **測試框架**（v2.2，需先完成）
+
+3. 🔴 **app.py 模組化**（v2.3-v3.0，需測試支援）
 
 ### 建議行動
-1. **短期**：實作 Quick Wins，立即見效
-2. **中期**：建立測試框架，為重構鋪路
-3. **長期**：漸進式模組化，降低技術債務
+1. **明天**：實作 Quick Wins（3-4 小時）
+2. **v2.2**：建立測試框架，為重構鋪路
+3. **v2.3**：漸進式模組化（AI 邏輯、RSS 邏輯分離）
+4. **v3.0**：考慮使用 code-simplifier 進行大規模重構
 
 ### 是否使用 code-simplifier？
 **建議等到 v2.3 或 v3.0**，當有完整測試覆蓋後再進行大規模重構。

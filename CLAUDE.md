@@ -2,6 +2,31 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 核心原則 (CRITICAL - READ FIRST)
+
+### 1. 專案定位
+**深度報導與專題追蹤工具**
+- 目標：為調查記者提供議題進展追蹤與靈感
+- **非即時新聞監控**，重視議題脈絡與趨勢分析
+- 更新頻率適中（每小時），適合長期追蹤
+
+### 2. 專業導向
+**介面必須保持專業簡潔**
+- ❌ **嚴禁使用顏文字**（emoji）於任何程式碼、介面、功能中
+- ❌ 不使用裝飾性圖示或符號
+- ✅ 專注於資訊密度與可讀性
+- ✅ 使用文字標籤、純文字描述
+
+**例外情況**：
+- 文件中的說明性標記（如本文件的 ✅ ❌）僅限用於 Markdown 文件
+- 程式碼、UI、資料庫中一律不使用顏文字
+
+### 3. 版本管理
+- 遵循語意化版本號 (Semantic Versioning): `主版本號.次版本號.修訂號`
+- 當前版本：**v2.1.0**
+- 每次更新前必須更新 `CHANGELOG.md`
+- 版本號顯示於前端底部（index.html）
+
 ## Overview
 
 TopicRadar (專題雷達) is an AI-powered news monitoring dashboard for investigative journalists. It tracks abstract topics by scraping RSS feeds, filtering with multilingual keywords (ZH/EN/JA/KO), translating international news, and generating AI summaries.

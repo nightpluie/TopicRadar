@@ -385,18 +385,18 @@
             }
         }
 
-        /* AI Button - Gradient Style */
+        /* AI Button - Gradient Green Style */
         .btn-ai {
-            background: linear-gradient(135deg, #1e90ff 0%, #4facfe 100%);
+            background: linear-gradient(135deg, #2ea043 0%, #3fb950 100%);
             color: white;
             border: none;
-            box-shadow: 0 2px 10px rgba(79, 172, 254, 0.3);
+            box-shadow: 0 2px 10px rgba(46, 160, 67, 0.3);
             transition: all 0.3s ease;
         }
 
         .btn-ai:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
+            box-shadow: 0 4px 15px rgba(46, 160, 67, 0.4);
         }
 
         /* Keyword Tags */
@@ -724,15 +724,20 @@
                             <button class="delete" onclick="deleteTopic('${id}')" title="刪除">刪除</button>
                         </div>
                     </div>
-                    <label>追蹤關鍵字</label>
+                    <label>追蹤</label>
                     <div class="keywords-display" id="keywords-${id}">
                         ${(topic.keywords || []).map(kw => `
                             <span class="keyword-tag">${kw}</span>
                         `).join('')}
-                        ${(topic.negative_keywords || []).map(kw => `
-                            <span class="keyword-tag negative">${kw}</span>
-                        `).join('')}
                     </div>
+                    ${(topic.negative_keywords && topic.negative_keywords.length > 0) ? `
+                        <label style="margin-top: 10px; display: block;">屏蔽</label>
+                        <div class="keywords-display">
+                            ${topic.negative_keywords.map(kw => `
+                                <span class="keyword-tag negative">${kw}</span>
+                            `).join('')}
+                        </div>
+                    ` : ''}
                 `;
 
                 // 綁定拖曳事件

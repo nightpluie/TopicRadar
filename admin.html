@@ -384,6 +384,45 @@
                     0 0 20px rgba(255, 107, 107, 0.6);
             }
         }
+
+        /* New button style for "Confirm" to be closer to AI button but distinct */
+        .btn-confirm {
+            background: #238636;
+            /* GitHub green */
+            color: #ffffff;
+            border: 1px solid rgba(240, 246, 252, 0.1);
+        }
+
+        .btn-confirm:hover {
+            background: #2ea043;
+        }
+
+        .rules-list {
+            list-style: none;
+            padding: 0;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .rules-list li {
+            margin-bottom: 15px;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .rules-list li::before {
+            content: "•";
+            color: var(--color-blue);
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+
+        .rules-list strong {
+            color: var(--color-radar-bright);
+            display: block;
+            margin-bottom: 4px;
+        }
     </style>
 </head>
 
@@ -406,6 +445,8 @@
                 <span style="margin-left: 20px;">狀態: <strong id="loading-status">檢查中...</strong></span>
             </div>
             <div>
+                <button class="btn btn-secondary" style="margin-right: 10px;" onclick="openRulesModal()">ℹ️
+                    更新說明</button>
                 <button class="btn btn-secondary" onclick="refreshAllNews()">立即更新新聞</button>
             </div>
         </div>
@@ -455,7 +496,7 @@
 
                 <div class="btn-group" style="justify-content: flex-end;">
                     <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
-                    <button type="button" class="btn btn-primary" onclick="addTopicWithoutAI()">確定</button>
+                    <button type="button" class="btn btn-confirm" onclick="addTopicWithoutAI()">確定</button>
                     <button type="submit" class="btn btn-ai">讓 AI 生成關鍵字</button>
                 </div>
             </form>
@@ -494,6 +535,36 @@
             <div class="btn-group" style="justify-content: flex-end;">
                 <button type="button" class="btn btn-secondary" onclick="closeEditModal()">取消</button>
                 <button type="button" class="btn btn-primary" onclick="confirmEdit()">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 更新規則說明 Modal -->
+    <div class="modal" id="rules-modal">
+        <div class="modal-content">
+            <h2 style="color: var(--color-blue); display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                ℹ️ 系統運作與更新規則
+            </h2>
+            <ul class="rules-list">
+                <li>
+                    <strong>⚡️ 極速快取顯示</strong>
+                    為了提供最佳體驗，進入網站時系統會優先載入資料庫中的「快取資料」，讓您無需等待爬蟲即可瀏覽。
+                </li>
+                <li>
+                    <strong>🤖 智慧排程更新</strong>
+                    系統會自動檢查資料新鮮度。若您瀏覽的專題資料距離上次更新已超過 <strong>5 分鐘</strong>，後台將自動觸發更新任務。
+                </li>
+                <li>
+                    <strong>⏳ 背景靜默執行</strong>
+                    更新程序會在伺服器背景執行（約需 1-2 分鐘），完成後自動寫入資料庫。您只需稍後再次刷新頁面即可看到最新內容。
+                </li>
+                <li>
+                    <strong>🔄 手動強制更新</strong>
+                    若需緊急查看最新動態，可點擊「立即更新新聞」按鈕，強制系統立即對所有專題進行一輪完整掃描。
+                </li>
+            </ul>
+            <div class="btn-group" style="justify-content: flex-end; margin-top: 25px;">
+                <button type="button" class="btn btn-primary" onclick="closeRulesModal()">了解</button>
             </div>
         </div>
     </div>
@@ -877,6 +948,16 @@
             } catch (error) {
                 alert('更新失敗: ' + error.message);
             }
+        }
+
+
+        // 開啟/關閉規則 Modal
+        function openRulesModal() {
+            document.getElementById('rules-modal').classList.add('active');
+        }
+
+        function closeRulesModal() {
+            document.getElementById('rules-modal').classList.remove('active');
         }
 
         // 重新整理新聞

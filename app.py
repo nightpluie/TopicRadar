@@ -1794,6 +1794,12 @@ def get_all():
             fmt_news = []
             for n in news[:10]:
                 dt = n['published']
+                if isinstance(dt, str):
+                    try:
+                        dt = datetime.fromisoformat(dt)
+                    except ValueError:
+                        continue # Skip invalid dates
+
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=TAIPEI_TZ)
                 else:
@@ -1818,6 +1824,12 @@ def get_all():
             fmt_intl_news = []
             for n in intl_news[:10]:
                 dt = n['published']
+                if isinstance(dt, str):
+                    try:
+                        dt = datetime.fromisoformat(dt)
+                    except ValueError:
+                        continue
+
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=TAIPEI_TZ)
                 else:

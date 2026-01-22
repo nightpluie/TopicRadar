@@ -864,41 +864,225 @@ a.news-title:hover {
     font-family: var(--font-mono);
 }
 
-/* ========== 響應式調整 ========== */
+/* ========== 響應式調整 - 平板 ========== */
 @media (max-width: 768px) {
     .dashboard {
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        grid-template-columns: 1fr;
         gap: 12px;
         padding: 12px;
     }
 
     .top-bar {
-        padding: 0 16px;
-        height: 56px;
+        padding: 0 12px;
+        height: auto;
+        min-height: 56px;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+
+    .logo {
+        flex: 0 0 auto;
     }
 
     .logo-text {
-        font-size: 18px;
+        font-size: 16px;
+        letter-spacing: 1px;
     }
 
     .status-info {
+        font-size: 11px;
+        gap: 6px;
+        flex: 1 1 100%;
+        justify-content: center;
+        order: 3;
+        padding-top: 4px;
+        border-top: 1px solid var(--border-dim);
+        flex-wrap: wrap;
+    }
+
+    /* 手機版隱藏部分狀態資訊 */
+    .status-info .separator:nth-of-type(3),
+    .status-info .separator:nth-of-type(4) {
+        display: none;
+    }
+
+    .header-actions {
+        gap: 6px;
+    }
+
+    .btn-refresh,
+    .btn-refresh-summary,
+    .settings-link {
+        padding: 6px 10px;
         font-size: 12px;
-        gap: 12px;
     }
 
     .topic-card {
         height: auto;
-        min-height: 800px;
+        min-height: auto;
+        padding: 14px;
     }
 
-    /* 在小螢幕上調整新聞列表高度 */
+    .topic-name {
+        font-size: 20px;
+    }
+
+    .topic-keywords {
+        font-size: 13px;
+        height: auto;
+        -webkit-line-clamp: 3;
+        line-clamp: 3;
+    }
+
+    .summary-content {
+        font-size: 14px;
+        min-height: 80px;
+        max-height: 120px;
+    }
+
+    /* 新聞列表自適應高度 */
     .news-list {
-        min-height: 220px;
-        max-height: 220px;
+        height: auto;
+        min-height: 200px;
+        max-height: 300px;
     }
 
     .intl-news-list {
-        min-height: 200px;
-        flex: 1;
+        height: auto;
+        min-height: 150px;
+        max-height: 200px;
+    }
+
+    a.news-title {
+        font-size: 14px;
+    }
+
+    .news-time,
+    .news-source {
+        font-size: 11px;
+        padding: 2px 6px;
+    }
+
+    .bottom-bar {
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px 12px;
+        font-size: 10px;
+    }
+
+    /* 拖動手柄在手機上始終顯示 */
+    .drag-handle {
+        opacity: 0.5;
+        font-size: 16px;
+        top: 14px;
+        right: 14px;
+    }
+}
+
+/* ========== 響應式調整 - 手機 ========== */
+@media (max-width: 480px) {
+    .top-bar {
+        padding: 6px 10px;
+    }
+
+    .logo-text {
+        font-size: 14px;
+    }
+
+    .status-info {
+        font-size: 10px;
+    }
+
+    /* 手機版進一步精簡狀態列 */
+    .update-time,
+    .user-separator {
+        display: none !important;
+    }
+
+    .realtime-clock {
+        font-size: 14px;
+    }
+
+    .header-actions {
+        gap: 4px;
+    }
+
+    .btn-refresh,
+    .btn-refresh-summary {
+        padding: 5px 8px;
+        font-size: 11px;
+    }
+
+    .settings-link {
+        padding: 5px 8px;
+        font-size: 11px;
+    }
+
+    .btn-logout {
+        padding: 5px 8px;
+        font-size: 11px;
+    }
+
+    .btn-fullscreen {
+        padding: 5px 8px;
+    }
+
+    .topic-card {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .topic-header::before {
+        width: 30px;
+        height: 3px;
+        margin-bottom: 8px;
+    }
+
+    .topic-name {
+        font-size: 18px;
+    }
+
+    .topic-keywords {
+        font-size: 12px;
+        margin-top: 4px;
+    }
+
+    .section-label {
+        font-size: 12px;
+        letter-spacing: 1px;
+    }
+
+    .summary-content {
+        font-size: 13px;
+        line-height: 1.6;
+    }
+
+    .news-list,
+    .intl-news-list {
+        padding-top: 10px;
+    }
+
+    .news-item {
+        padding: 6px 0;
+    }
+
+    a.news-title {
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .news-title-original {
+        font-size: 11px;
+    }
+
+    .update-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+
+    .bottom-bar {
+        font-size: 9px;
     }
 }

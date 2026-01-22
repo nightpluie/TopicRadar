@@ -897,7 +897,7 @@ def load_user_data(user_id):
             try:
                 last_update = datetime.fromisoformat(last_update_str)
                 # 如果資料超過 5 分鐘未更新，則觸發背景更新
-                if (datetime.now(TAIPEI_TZ) - last_update).total_seconds() > 300:
+                if (datetime.now(TAIPEI_TZ) - last_update).total_seconds() > 3600:
                     should_refresh = True
             except ValueError:
                 should_refresh = True
@@ -905,7 +905,7 @@ def load_user_data(user_id):
         if not should_refresh:
             return True
             
-        print(f"[LOAD] 使用者 {user_id} 資料已過期 (>5m)，觸發背景更新...")
+        print(f"[LOAD] 使用者 {user_id} 資料已過期 (>60m)，觸發背景更新...")
     else:
         # 嘗試從 Supabase 資料庫載入快取
         print(f"[LOAD] 嘗試從 Supabase 載入使用者 {user_id} 快取...")

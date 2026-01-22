@@ -440,21 +440,34 @@ def load_user_cache(user_id: str):
         print(f"[AUTH] 載入快取失敗: {e}")
         return {}
 
+from datetime import datetime
+
 def save_topic_cache_item(user_id: str, topic_id: str, domestic_news: list, intl_news: list, summary_data: dict):
     """
     更新單一專題的快取到 Supabase (Upsert)
+    會自動將 datetime 物件轉換為 ISO 字串
     """
     try:
         supabase = get_supabase()
         
+        # 輔助函式：序列化新聞列表
+        def serialize_news(news_list):
+            serialized = []
+            for item in news_list:
+                new_item = item.copy()
+                if 'published' in new_item and isinstance(new_item['published'], datetime):
+                    new_item['published'] = new_item['published'].isoformat()
+                serialized.append(new_item)
+            return serialized
+
         summary_text = summary_data.get('text', '')
         summary_updated_at = summary_data.get('updated_at')
 
         data = {
             'user_id': user_id,
             'topic_id': topic_id,
-            'domestic_news': domestic_news,
-            'intl_news': intl_news,
+            'domestic_news': serialize_news(domestic_news),
+            'intl_news': serialize_news(intl_news),
             'summary': summary_text,
             'summary_updated_at': summary_updated_at,
             'updated_at': 'now()'
@@ -462,7 +475,7 @@ def save_topic_cache_item(user_id: str, topic_id: str, domestic_news: list, intl
         supabase.table('topic_cache').upsert(data).execute()
         return True
     except Exception as e:
-        print(f"[AUTH] 儲存快取失敗 ({topic_id}): {e}")
+        print(f"[AUTH] 儲存快取失敗 (topic={topic_id}): {e}")
         return False
 
 def delete_topic_cache(user_id: str, topic_id: str):

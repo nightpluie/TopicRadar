@@ -1563,12 +1563,14 @@ def update_international_news():
         if isinstance(keywords, list):
             keywords_en = []
             keywords_ja = []
+            keywords_ko = []
         else:
             keywords_en = keywords.get('en', [])
             keywords_ja = keywords.get('ja', [])
+            keywords_ko = keywords.get('ko', [])
 
         negative_keywords = cfg.get('negative_keywords', [])
-        intl_keywords = keywords_en + keywords_ja
+        intl_keywords = keywords_en + keywords_ja + keywords_ko
 
         if not intl_keywords:
             continue
@@ -1604,7 +1606,15 @@ def update_international_news():
             for region_name, region_info in GOOGLE_NEWS_INTL_REGIONS.items():
                 if len(all_intl_items) >= 5:
                     break
-                search_keywords = keywords_ja if region_info['lang'] == 'ja' else keywords_en
+                
+                # 選擇對應語言的關鍵字
+                if region_info['lang'] == 'ja':
+                    search_keywords = keywords_ja
+                elif region_info['lang'] == 'ko':
+                    search_keywords = keywords_ko
+                else:
+                    search_keywords = keywords_en
+                
                 if not search_keywords:
                     continue
 

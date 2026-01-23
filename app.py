@@ -9,6 +9,7 @@ import hashlib
 import feedparser
 import requests
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from flask import Flask, jsonify, request, make_response

@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WISE情報中心｜設定</title>
+    <!-- Google Fonts -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+
+    <style>
+        :root {
+            /* 戰情室配色 - 雷達綠方案 */
+            --bg-primary: #050810;
+            --bg-panel: #0D1117;
+            --bg-elevated: #161B22;
+            --bg-hover: #1F2937;
+
+            /* 功能色 - 航空雷達磷光綠 */
+            --color-blue: #39FF14;
+            --color-radar: #39FF14;
+            --color-radar-bright: #7FFF00;
+            --color-red: #EF4444;
+            --color-green: #22C55E;
+            --color-orange: #F59E0B;
+
+            /* 文字系統 - 高對比 */
+            --text-primary: #FFFFFF;
+            --text-secondary: #CBD5E1;
+            --text-muted: #64748B;
+
+            /* 結構 */
+            --border: #30363D;
+            --border-dim: #21262D;
+
+            /* 字體 */
+            --font-sans: 'Inter', -apple-system, system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            padding: 20px;
+            font-size: 16px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 900;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            color: #00FF88;
+            text-shadow:
+                0 0 5px rgba(0, 255, 136, 0.4),
+                0 0 10px rgba(0, 255, 136, 0.2);
+        }
+
+        .header-actions a {
+            color: var(--color-blue);
+            text-decoration: none;
+            padding: 8px 16px;
+            border: 1px solid var(--color-blue);
+            border-radius: 2px;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .header-actions a:hover {
+            background: var(--color-blue);
+            color: var(--bg-primary);
+        }
+
+        .topics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .topic-card {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            padding: 20px;
+        }
+
+        .topic-card.editing {
+            border-color: var(--color-blue);
+        }
+
+        .topic-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .topic-header h3 {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 18px;
+        }
+
+        .lang-indicators {
+            display: inline-flex;
+            gap: 6px;
+            margin-left: 6px;
+        }
+
+        .lang-pill {
+            padding: 2px 6px;
+            border-radius: 2px;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-dim);
+            background: rgba(0, 242, 255, 0.08);
+        }
+
+        .topic-actions button {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 5px;
+            font-size: 14px;
+            transition: color 0.2s;
+            margin-left: 10px;
+        }
+
+        .topic-actions button:hover {
+            color: var(--color-blue);
+        }
+
+        .topic-actions button.delete:hover {
+            color: var(--color-red);
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        input[type="text"],
+        textarea {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            padding: 10px 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        input[type="text"]:focus,
+        textarea:focus {
+            outline: none;
+            border-color: var(--color-blue);
+        }
+
+        textarea {
+            min-height: 80px;
+            resize: vertical;
+        }
+
+        .keywords-display {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .keyword-tag {
+            background: rgba(0, 242, 255, 0.15);
+            border: 1px solid rgba(0, 242, 255, 0.3);
+            color: var(--color-blue);
+            padding: 4px 10px;
+            border-radius: 2px;
+            font-size: 13px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 2px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--color-blue);
+            color: var(--bg-primary);
+        }
+
+        .btn-primary:hover {
+            filter: brightness(1.1);
+        }
+
+        .btn-secondary {
+            background: var(--border);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-ai {
+            background: linear-gradient(135deg, #00A040 0%, #008833 100%);
+            color: white;
+            text-shadow: 0 0 5px rgba(0, 160, 64, 0.4);
+        }
+
+        .btn-ai:hover {
+            filter: brightness(1.1);
+            box-shadow: 0 0 12px rgba(0, 160, 64, 0.3);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .add-topic-card {
+            background: transparent;
+            border: 2px dashed var(--border);
+            border-radius: 2px;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .add-topic-card:hover {
+            border-color: var(--color-blue);
+            background: rgba(0, 242, 255, 0.05);
+        }
+
+        .add-topic-card .icon {
+            font-size: 30px;
+            margin-bottom: 10px;
+            color: var(--text-secondary);
+        }
+
+        .add-topic-card span {
+            color: var(--text-secondary);
+        }
+
+        /* Drag and drop styles */
+        .topic-card[draggable="true"] {
+            cursor: move;
+        }
+
+        .topic-card.dragging {
+            opacity: 0.5;
+            border-color: var(--color-blue);
+        }
+
+        .topic-card.drag-over {
+            border-color: var(--color-radar);
+            background: rgba(57, 255, 20, 0.05);
+        }
+
+        .drag-handle {
+            color: var(--text-muted);
+            font-size: 18px;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .drag-handle:active {
+            cursor: grabbing;
+        }
+
+        .status-bar {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .status-bar .info {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--color-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            padding: 30px;
+            width: 90%;
+            max-width: 500px;
+        }
+
+        .modal-content h2 {
+            margin-bottom: 20px;
+            color: var(--color-blue);
+        }
+
+        /* 載入進度狀態樣式 */
+        #loading-status.status-loading {
+            color: var(--color-red);
+            animation: loading-pulse 1.5s ease-in-out infinite;
+        }
+
+        #loading-status.status-loaded {
+            color: var(--color-green);
+            font-weight: 600;
+        }
+
+        @keyframes loading-pulse {
+
+            0%,
+            100% {
+                color: var(--color-red);
+                text-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+            }
+
+            50% {
+                color: #FF6B6B;
+                text-shadow:
+                    0 0 10px #FF6B6B,
+                    0 0 20px rgba(255, 107, 107, 0.6);
+            }
+        }
+
+        /* AI Button - Gradient Green Style */
+        .btn-ai {
+            background: linear-gradient(135deg, #2ea043 0%, #3fb950 100%);
+            color: white;
+            border: none;
+            box-shadow: 0 2px 10px rgba(46, 160, 67, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .btn-ai:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(46, 160, 67, 0.4);
+        }
+
+        /* Keyword Tags */
+        .keyword-tag {
+            background: rgba(30, 144, 255, 0.1);
+            color: var(--color-blue);
+            border: 1px solid rgba(30, 144, 255, 0.2);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .keyword-tag.negative {
+            background: rgba(140, 140, 140, 0.1);
+            color: #8c8c8c;
+            border: 1px solid rgba(140, 140, 140, 0.2);
+        }
+
+        .rules-list {
+            list-style: none;
+            padding: 0;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .rules-list li {
+            margin-bottom: 15px;
+            padding-left: 20px;
+            position: relative;
+        }
+
+        .rules-list li::before {
+            content: "•";
+            color: var(--color-blue);
+            position: absolute;
+            left: 0;
+            font-weight: bold;
+        }
+
+        .rules-list strong {
+            color: var(--color-radar-bright);
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        /* ============ Turbo 按鈕 - 角度發現 ============ */
+        .turbo-btn {
+            position: absolute;
+            bottom: 18px;
+            right: 18px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            border: 2px solid #30363D;
+            background: rgba(48, 54, 61, 0.2);
+            color: #64748B;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: not-allowed;
+            opacity: 0.4;
+            transition: all 0.3s ease;
+            z-index: 5;
+            user-select: none;
+        }
+
+        .turbo-btn.ready {
+            border-color: #39FF14;
+            background: radial-gradient(circle at center, rgba(57,255,20,0.3), transparent);
+            color: #39FF14;
+            cursor: pointer;
+            opacity: 1;
+            box-shadow: 
+                0 0 20px rgba(57,255,20,0.6),
+                0 0 40px rgba(57,255,20,0.3),
+                inset 0 0 20px rgba(57,255,20,0.2);
+            animation: turbo-pulse 1.5s ease-in-out infinite;
+        }
+
+        .turbo-btn.ready:hover {
+            transform: scale(1.1);
+            box-shadow: 
+                0 0 30px rgba(57,255,20,0.8),
+                0 0 60px rgba(57,255,20,0.5),
+                inset 0 0 30px rgba(57,255,20,0.3);
+        }
+
+        @keyframes turbo-pulse {
+            0%, 100% {
+                box-shadow: 
+                    0 0 20px rgba(57,255,20,0.6),
+                    0 0 40px rgba(57,255,20,0.3);
+            }
+            50% {
+                box-shadow: 
+                    0 0 30px rgba(57,255,20,0.8),
+                    0 0 60px rgba(57,255,20,0.5),
+                    0 0 80px rgba(57,255,20,0.2);
+            }
+        }
+
+        .turbo-btn.analyzing {
+            animation: turbo-spin 1s linear infinite, turbo-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes turbo-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .turbo-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: -30px;
+            right: 0;
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .turbo-btn:hover::after {
+            opacity: 1;
+        }
+
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>WISE情報中心｜設定</h1>
+            <div class="header-actions">
+                <span id="user-info" style="margin-right: 20px; color: var(--text-secondary); font-size: 14px;"></span>
+                <button id="logout-btn" class="btn btn-secondary"
+                    style="margin-right: 10px; padding: 6px 14px; font-size: 13px;">登出</button>
+                <a href="/">返回前台</a>
+            </div>
+        </header>
+
+        <div class="status-bar">
+            <div class="info">
+                <span>目前追蹤專題數: <strong id="topic-count">0</strong></span>
+                <span style="margin-left: 20px;">上次更新: <strong id="last-update">--</strong></span>
+                <span style="margin-left: 20px;">狀態: <strong id="loading-status">檢查中...</strong></span>
+            </div>
+            <div>
+                <button class="btn btn-secondary" style="margin-right: 10px;" onclick="openRulesModal()">
+                    更新說明</button>
+                <button class="btn btn-secondary" onclick="refreshAllNews()">立即更新新聞</button>
+            </div>
+        </div>
+
+        <!-- 管理員專區（僅管理員可見） -->
+        <div id="admin-panel" style="display: none; margin-bottom: 30px;">
+            <h2 style="font-size: 20px; margin-bottom: 15px; color: var(--color-radar);">⚙️ 管理員專區</h2>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- 邀請碼管理 -->
+                <div
+                    style="background: var(--bg-panel); border: 1px solid var(--border); padding: 20px; border-radius: 2px;">
+                    <h3
+                        style="font-size: 16px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                        📧 邀請碼管理
+                        <button class="btn btn-primary" style="padding: 6px 12px; font-size: 13px;"
+                            onclick="createInviteCode()">生成新邀請碼</button>
+                    </h3>
+                    <div id="invite-codes-list" style="max-height: 300px; overflow-y: auto;">
+                        <!-- 邀請碼列表 -->
+                    </div>
+                </div>
+
+                <!-- 使用者管理 -->
+                <div
+                    style="background: var(--bg-panel); border: 1px solid var(--border); padding: 20px; border-radius: 2px;">
+                    <h3 style="font-size: 16px; margin-bottom: 15px;">👥 使用者管理</h3>
+                    <div id="users-list" style="max-height: 300px; overflow-y: auto;">
+                        <!-- 使用者列表 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="topics-grid" id="topics-container">
+            <!-- 專題卡片會動態生成 -->
+        </div>
+    </div>
+
+    <!-- 新增專題 Modal -->
+    <div class="modal" id="add-modal">
+        <div class="modal-content">
+            <h2>新增專題</h2>
+            <form id="add-topic-form">
+                <label>議題名稱</label>
+                <input type="text" id="new-topic-name" placeholder="例如：台灣電動車產業" required>
+
+                <div class="btn-group" style="justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="addTopicWithoutAI()">確定</button>
+                    <button type="submit" class="btn btn-ai">讓 AI 生成關鍵字</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 刪除確認 Modal -->
+    <div class="modal" id="delete-modal">
+        <div class="modal-content">
+            <h2 style="color: var(--color-red);">確認刪除</h2>
+            <p style="margin-bottom: 20px; color: var(--text-secondary);">確定要刪除專題「<span
+                    id="delete-topic-name"></span>」嗎？此操作無法復原。</p>
+            <div class="btn-group" style="justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="closeDeleteModal()">取消</button>
+                <button type="button" class="btn" style="background: var(--color-red); color: white;"
+                    onclick="confirmDelete()">確認刪除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 編輯關鍵字 Modal -->
+    <div class="modal" id="edit-modal">
+        <div class="modal-content">
+            <h2>編輯關鍵字</h2>
+            <p style="margin-bottom: 10px; color: var(--text-secondary);">專題：<strong id="edit-topic-name"></strong></p>
+
+            <label>✅ 正面關鍵字（用逗號分隔）</label>
+            <textarea id="edit-keywords" rows="4" placeholder="關鍵字1, 關鍵字2, 關鍵字3"></textarea>
+
+            <label style="margin-top: 15px;">EN 英文關鍵字（用逗號分隔）</label>
+            <textarea id="edit-keywords-en" rows="3" placeholder="keyword1, keyword2, keyword3"></textarea>
+
+            <label style="margin-top: 15px;">JA 日文關鍵字（用逗號分隔）</label>
+            <textarea id="edit-keywords-ja" rows="3" placeholder="キーワード1, キーワード2, キーワード3"></textarea>
+
+            <label style="margin-top: 15px;">KO 韓文關鍵字（用逗號分隔）</label>
+            <textarea id="edit-keywords-ko" rows="3" placeholder="키워드1, 키워드2, 키워드3"></textarea>
+
+            <label style="margin-top: 15px;">❌ 負面關鍵字（排除包含這些詞的新聞）</label>
+            <textarea id="edit-negative-keywords" rows="3" placeholder="藝人, 明星, 電影, 購物..."></textarea>
+            <p style="font-size: 12px; color: var(--text-secondary); margin-top: 5px;">
+                提示：負面關鍵字可以過濾掉不相關的新聞，例如「移工」話題中排除「藝人扮演移工」等娛樂新聞
+            </p>
+
+            <div class="btn-group" style="justify-content: flex-end;">
+                <button type="button" class="btn btn-secondary" onclick="closeEditModal()">取消</button>
+                <button type="button" class="btn btn-primary" onclick="confirmEdit()">儲存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 更新規則說明 Modal -->
+    <div class="modal" id="rules-modal">
+        <div class="modal-content">
+            <h2 style="color: var(--color-blue); display: flex; align-items: center; gap: 10px; margin-bottom: 20px;">
+                系統運作與更新規則
+            </h2>
+            <ul class="rules-list">
+                <li>
+                    <strong>極速快取顯示</strong>
+                    為提供最佳瀏覽體驗，系統會優先載入資料庫中的快取內容，讓您無需等待爬蟲即可立即閱讀。
+                </li>
+                <li>
+                    <strong>智慧排程更新</strong>
+                    登入時系統將自動檢查資料新鮮度（5 分鐘門檻），若您長期停留在頁面上，則會依循每小時的定期排程進行更新，既能確保即時性又能節省流量資源。
+                </li>
+                <li>
+                    <strong>背景靜默執行</strong>
+                    所有更新程序皆在伺服器背景執行（約需 1-2 分鐘），完成後會自動寫入資料庫。您只需在看到「已更新」狀態後刷新頁面即可。
+                </li>
+                <li>
+                    <strong>手動強制更新</strong>
+                    若有緊急需求，可點擊「立即更新新聞」按鈕，系統將強制對所有專題進行一輪完整掃描。
+                </li>
+            </ul>
+            <div class="btn-group" style="justify-content: flex-end; margin-top: 25px;">
+                <button type="button" class="btn btn-primary" onclick="closeRulesModal()">了解</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '';
+        let topicsData = {};
+        let authToken = null;
+        let currentUser = null;
+
+        // === 認證相關函數 ===
+
+        // 檢查登入狀態
+        async function checkAuth() {
+            authToken = localStorage.getItem('auth_token');
+
+            if (!authToken) {
+                // 未登入，導向登入頁面
+                window.location.href = '/login';
+                return false;
+            }
+
+            // 驗證 token 有效性
+            try {
+                const response = await fetch(`${API_BASE}/api/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) {
+                    // Token 無效，清除並導向登入頁
+                    localStorage.removeItem('auth_token');
+                    localStorage.removeItem('user_email');
+                    localStorage.removeItem('user_id');
+                    localStorage.removeItem('user_role');
+                    window.location.href = '/login';
+                    return false;
+                }
+
+                const data = await response.json();
+                currentUser = data.user;
+
+                // 顯示使用者資訊
+                const userRole = data.role || localStorage.getItem('user_role') || 'user';
+                document.getElementById('user-info').textContent = `👤 ${currentUser.email} ${userRole === 'admin' ? '(管理員)' : ''}`;
+
+                // 如果是管理員，顯示管理員專區
+                if (userRole === 'admin') {
+                    document.getElementById('admin-panel').style.display = 'block';
+                    loadInviteCodes();
+                    loadUsers();
+                }
+
+                return true;
+            } catch (error) {
+                console.error('認證檢查失敗:', error);
+                window.location.href = '/login';
+                return false;
+            }
+        }
+
+        // 登出
+        async function logout() {
+            try {
+                await fetch(`${API_BASE}/api/auth/logout`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+            } catch (error) {
+                console.error('登出請求失敗:', error);
+            }
+
+            // 清除本地儲存
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_email');
+            localStorage.removeItem('user_id');
+            localStorage.removeItem('user_role');
+
+            // 導向登入頁
+            window.location.href = '/login';
+        }
+
+        // 取得認證 headers
+        function getAuthHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${authToken}`
+            };
+        }
+
+        function normalizeKeywords(rawKeywords) {
+            if (Array.isArray(rawKeywords)) {
+                return { zh: rawKeywords, en: [], ja: [], ko: [] };
+            }
+            if (typeof rawKeywords === 'string' && rawKeywords.trim()) {
+                return { zh: [rawKeywords.trim()], en: [], ja: [], ko: [] };
+            }
+            if (rawKeywords && typeof rawKeywords === 'object') {
+                return {
+                    zh: Array.isArray(rawKeywords.zh) ? rawKeywords.zh : [],
+                    en: Array.isArray(rawKeywords.en) ? rawKeywords.en : [],
+                    ja: Array.isArray(rawKeywords.ja) ? rawKeywords.ja : [],
+                    ko: Array.isArray(rawKeywords.ko) ? rawKeywords.ko : []
+                };
+            }
+            return { zh: [], en: [], ja: [], ko: [] };
+        }
+
+        function getTopicKeywordsFull(topic) {
+            return normalizeKeywords(topic.keywords_full || topic.keywords);
+        }
+
+        function buildLangIndicators(topic) {
+            const keywords = getTopicKeywordsFull(topic);
+            const labels = [];
+            if (keywords.en.length) labels.push('EN');
+            if (keywords.ja.length) labels.push('JP');
+            if (keywords.ko.length) labels.push('KR');
+            if (!labels.length) return '';
+            return `<span class="lang-indicators">${labels.map(label => `<span class="lang-pill">${label}</span>`).join('')}</span>`;
+        }
+
+        function parseKeywords(value) {
+            return value.split(',').map(k => k.trim()).filter(k => k);
+        }
+
+        // === 專題管理相關函數 ===
+
+        // 載入所有專題設定
+        async function loadTopics() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/topics`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                const data = await response.json();
+                topicsData = data.topics || {};
+                renderTopics();
+                document.getElementById('topic-count').textContent = Object.keys(topicsData).length;
+                document.getElementById('last-update').textContent = data.last_update ?
+                    new Date(data.last_update).toLocaleString('zh-TW', { hour12: false }) : '--';
+            } catch (error) {
+                console.error('載入失敗:', error);
+            }
+        }
+
+        // 渲染專題卡片
+        function renderTopics() {
+            const container = document.getElementById('topics-container');
+            container.innerHTML = '';
+
+            // 排序專題（按 order 欄位）
+            const sortedTopics = Object.entries(topicsData).sort(([, a], [, b]) => {
+                return (a.order || 999) - (b.order || 999);
+            });
+
+            // 現有專題
+            sortedTopics.forEach(([id, topic]) => {
+                const card = document.createElement('div');
+                card.className = 'topic-card';
+                card.draggable = false; // 預設不可拖動
+                card.dataset.topicId = id;
+                const langIndicators = buildLangIndicators(topic);
+                card.innerHTML = `
+                    <div class="topic-header">
+                        <h3>
+                            <span class="drag-handle">⋮⋮</span>
+                            <span>${topic.name}</span>
+                            ${langIndicators}
+                        </h3>
+                        <div class="topic-actions">
+                            <button onclick="editTopic('${id}')" title="編輯">編輯</button>
+                            <button class="delete" onclick="deleteTopic('${id}')" title="刪除">刪除</button>
+                        </div>
+                    </div>
+                    <label>追蹤</label>
+                    <div class="keywords-display" id="keywords-${id}">
+                        ${(topic.keywords || []).map(kw => `
+                            <span class="keyword-tag">${kw}</span>
+                        `).join('')}
+                    </div>
+                    ${(topic.negative_keywords && topic.negative_keywords.length > 0) ? `
+                        <label style="margin-top: 10px; display: block;">屏蔽</label>
+                        <div class="keywords-display">
+                            ${topic.negative_keywords.map(kw => `
+                                <span class="keyword-tag negative">${kw}</span>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+                `;
+
+                // 綁定拖曳事件
+                card.addEventListener('dragstart', handleDragStart);
+                card.addEventListener('dragend', handleDragEnd);
+                card.addEventListener('dragenter', handleDragEnter);
+                card.addEventListener('dragover', handleDragOver);
+                card.addEventListener('dragleave', handleDragLeave);
+                card.addEventListener('drop', handleDrop);
+
+                // 只有從 drag-handle 開始拖動時才啟用 draggable
+                const dragHandle = card.querySelector('.drag-handle');
+                if (dragHandle) {
+                    dragHandle.addEventListener('mousedown', () => {
+                        card.draggable = true;
+                    });
+                    dragHandle.addEventListener('mouseup', () => {
+                        card.draggable = false;
+                    });
+                }
+
+                // 當拖動結束後重設 draggable
+                card.addEventListener('dragend', () => {
+                    card.draggable = false;
+                });
+
+                container.appendChild(card);
+            });
+
+            // 新增專題按鈕
+            const addCard = document.createElement('div');
+            addCard.className = 'add-topic-card';
+            addCard.onclick = () => openModal();
+            addCard.innerHTML = `
+                <div class="icon">+</div>
+                <span>新增專題</span>
+            `;
+            container.appendChild(addCard);
+        }
+
+        // 開啟新增 Modal
+        function openModal() {
+            document.getElementById('add-modal').classList.add('active');
+            document.getElementById('new-topic-name').focus();
+        }
+
+        function closeModal() {
+            document.getElementById('add-modal').classList.remove('active');
+            document.getElementById('add-topic-form').reset();
+        }
+
+        async function addTopicWithoutAI() {
+            const name = document.getElementById('new-topic-name').value.trim();
+
+            if (!name) {
+                alert('請輸入議題名稱');
+                return;
+            }
+
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading"></span> 建立中...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/topics`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({
+                        name,
+                        generate_keywords: false,
+                        auto_translate: true  // 啟用自動翻譯
+                    })
+                });
+
+                if (response.ok) {
+                    closeModal();
+                    await loadTopics();
+                } else {
+                    const error = await response.json();
+                    alert('新增失敗: ' + (error.message || '未知錯誤'));
+                }
+            } catch (error) {
+                alert('新增失敗: ' + error.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        // 新增專題（AI 生成關鍵字）
+        document.getElementById('add-topic-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const name = document.getElementById('new-topic-name').value.trim();
+
+            if (!name) return;
+
+            const btn = e.target.querySelector('button[type="submit"]');
+            const originalText = btn.textContent;
+            btn.innerHTML = '<span class="loading"></span> AI 生成中...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/topics`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ name })
+                });
+
+                if (response.ok) {
+                    closeModal();
+                    await loadTopics();
+                } else {
+                    const error = await response.json();
+                    alert('新增失敗: ' + (error.message || '未知錯誤'));
+                }
+            } catch (error) {
+                alert('新增失敗: ' + error.message);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        });
+
+        // 刪除專題 - 開啟確認 Modal
+        let pendingDeleteId = null;
+
+        function deleteTopic(topicId) {
+            const topic = topicsData[topicId];
+            if (!topic) return;
+
+            pendingDeleteId = topicId;
+            document.getElementById('delete-topic-name').textContent = topic.name;
+            document.getElementById('delete-modal').classList.add('active');
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-modal').classList.remove('active');
+            pendingDeleteId = null;
+        }
+
+        async function confirmDelete() {
+            if (!pendingDeleteId) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/topics/${pendingDeleteId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    closeDeleteModal();
+                    await loadTopics();
+                }
+            } catch (error) {
+                alert('刪除失敗: ' + error.message);
+            }
+        }
+
+        // 編輯專題 - 開啟編輯 Modal
+        let pendingEditId = null;
+
+        function editTopic(topicId) {
+            const topic = topicsData[topicId];
+            if (!topic) return;
+
+            pendingEditId = topicId;
+            document.getElementById('edit-topic-name').textContent = topic.name;
+            const keywords = getTopicKeywordsFull(topic);
+            document.getElementById('edit-keywords').value = keywords.zh.join(', ');
+            document.getElementById('edit-keywords-en').value = keywords.en.join(', ');
+            document.getElementById('edit-keywords-ja').value = keywords.ja.join(', ');
+            document.getElementById('edit-keywords-ko').value = keywords.ko.join(', ');
+            document.getElementById('edit-negative-keywords').value = (topic.negative_keywords || []).join(', ');
+
+            document.getElementById('edit-modal').classList.add('active');
+            document.getElementById('edit-keywords').focus();
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-modal').classList.remove('active');
+            pendingEditId = null;
+        }
+
+        async function confirmEdit() {
+            if (!pendingEditId) return;
+
+            // 構建符合後端格式的關鍵字結構 {zh: [], en: [], ja: [], ko: []}
+            const keywords = {
+                zh: parseKeywords(document.getElementById('edit-keywords').value),
+                en: parseKeywords(document.getElementById('edit-keywords-en').value),
+                ja: parseKeywords(document.getElementById('edit-keywords-ja').value),
+                ko: parseKeywords(document.getElementById('edit-keywords-ko').value)
+            };
+            const negative_keywords = parseKeywords(document.getElementById('edit-negative-keywords').value);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/topics/${pendingEditId}`, {
+                    method: 'PUT',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ keywords, negative_keywords })
+                });
+
+                if (response.ok) {
+                    closeEditModal();
+                    await loadTopics();
+                    alert('更新成功！');
+                } else {
+                    const error = await response.json();
+                    alert('更新失敗: ' + (error.error || '未知錯誤'));
+                }
+            } catch (error) {
+                alert('更新失敗: ' + error.message);
+            }
+        }
+
+
+        // 開啟/關閉規則 Modal
+        function openRulesModal() {
+            document.getElementById('rules-modal').classList.add('active');
+        }
+
+        function closeRulesModal() {
+            document.getElementById('rules-modal').classList.remove('active');
+        }
+
+        // 重新整理新聞
+        async function refreshAllNews() {
+            try {
+                await fetch(`${API_BASE}/api/refresh`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                alert('新聞更新完成！');
+                await loadTopics();
+            } catch (error) {
+                alert('更新失敗: ' + error.message);
+            }
+        }
+
+        // === 拖曳排序功能 ===
+        let draggedElement = null;
+
+        function handleDragStart(e) {
+            draggedElement = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+            console.log('開始拖動:', this.dataset.topicId);
+        }
+
+        function handleDragEnter(e) {
+            if (this.classList.contains('topic-card') && this !== draggedElement) {
+                this.classList.add('drag-over');
+            }
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            return false;
+        }
+
+        function handleDragLeave(e) {
+            if (e.target === this) {
+                this.classList.remove('drag-over');
+            }
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (this !== draggedElement && this.classList.contains('topic-card')) {
+                this.classList.remove('drag-over');
+
+                // 真正的交換邏輯（swap）
+                const container = document.getElementById('topics-container');
+
+                // 創建一個佔位符來協助交換
+                const placeholder = document.createElement('div');
+
+                // 記錄兩個元素的位置
+                const draggedParent = draggedElement.parentNode;
+                const targetParent = this.parentNode;
+                const draggedNext = draggedElement.nextSibling;
+                const targetNext = this.nextSibling;
+
+                // 先把 draggedElement 放到 placeholder 的位置
+                // 然後把 this 放到 draggedElement 原本的位置
+                // 最後把 draggedElement 放到 this 原本的位置
+
+                if (draggedNext === this) {
+                    // 相鄰的情況：dragged 在 target 前面
+                    container.insertBefore(this, draggedElement);
+                } else if (targetNext === draggedElement) {
+                    // 相鄰的情況：target 在 dragged 前面
+                    container.insertBefore(draggedElement, this);
+                } else {
+                    // 不相鄰的情況：先用 placeholder 佔位
+                    container.insertBefore(placeholder, this);
+                    container.insertBefore(this, draggedNext === null ? null : draggedNext);
+                    container.insertBefore(draggedElement, placeholder);
+                    container.removeChild(placeholder);
+                }
+            }
+
+            return false;
+        }
+
+        function handleDragEnd(e) {
+            console.log('結束拖動');
+            this.classList.remove('dragging');
+
+            // 移除所有 drag-over class
+            document.querySelectorAll('.drag-over').forEach(el => {
+                el.classList.remove('drag-over');
+            });
+
+            // 儲存新順序
+            saveNewOrder();
+        }
+
+        // 儲存新的排序到後端
+        async function saveNewOrder() {
+            const allCards = Array.from(document.querySelectorAll('.topic-card'));
+            const newOrder = allCards.map((card, index) => ({
+                id: card.dataset.topicId,
+                order: index
+            }));
+
+            console.log('準備儲存新順序:', newOrder);
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/topics/reorder`, {
+                    method: 'PUT',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ order: newOrder })
+                });
+
+                console.log('API 回應狀態:', response.status);
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('排序已儲存成功:', result);
+                    // 重新載入資料以確保 DOM 和 order 值一致
+                    await loadTopics();
+                } else {
+                    const error = await response.text();
+                    console.error('排序儲存失敗:', error);
+                    await loadTopics(); // 重新載入復原
+                }
+            } catch (error) {
+                console.error('排序儲存錯誤:', error);
+                await loadTopics(); // 重新載入復原
+            }
+        }
+
+        // 初始化
+        let loadingCheckInterval = null;
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 先檢查認證
+            const isAuthenticated = await checkAuth();
+            if (!isAuthenticated) {
+                return; // 會自動導向登入頁
+            }
+
+            // 綁定登出按鈕
+            document.getElementById('logout-btn').addEventListener('click', logout);
+
+            // 載入資料
+            loadTopics();
+            startLoadingStatusCheck();
+        });
+
+        // === 管理員功能 ===
+
+        // 載入邀請碼列表
+        async function loadInviteCodes() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/invites`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const listEl = document.getElementById('invite-codes-list');
+
+                if (!data.codes || data.codes.length === 0) {
+                    listEl.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">尚無邀請碼</p>';
+                    return;
+                }
+
+                listEl.innerHTML = data.codes.map(code => `
+                    <div style="background: var(--bg-primary); border: 1px solid var(--border-dim); padding: 12px; margin-bottom: 8px; border-radius: 2px; font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                            <code style="background: rgba(0,255,136,0.1); padding: 4px 8px; color: var(--color-radar); font-family: var(--font-mono);">${code.code}</code>
+                            <button onclick="deleteInviteCode('${code.id}')" style="background: none; border: none; color: var(--color-red); cursor: pointer; font-size: 12px;">刪除</button>
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 12px;">
+                            ${code.used_by ? `✅ 已使用 (${new Date(code.used_at).toLocaleDateString()})` : '⏳ 未使用'}
+                            ${code.expires_at ? ` | 到期: ${new Date(code.expires_at).toLocaleDateString()}` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('載入邀請碼失敗:', error);
+            }
+        }
+
+        // 生成新邀請碼
+        async function createInviteCode() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/invites`, {
+                    method: 'POST',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ expires_days: 7 })
+                });
+
+                if (response.ok) {
+                    await loadInviteCodes();
+                    alert('邀請碼已生成！');
+                } else {
+                    const error = await response.json();
+                    alert('生成失敗: ' + (error.error || '未知錯誤'));
+                }
+            } catch (error) {
+                alert('生成失敗: ' + error.message);
+            }
+        }
+
+        // 刪除邀請碼
+        async function deleteInviteCode(inviteId) {
+            if (!confirm('確定要刪除此邀請碼嗎？')) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/invites/${inviteId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (response.ok) {
+                    await loadInviteCodes();
+                } else {
+                    alert('刪除失敗');
+                }
+            } catch (error) {
+                alert('刪除失敗: ' + error.message);
+            }
+        }
+
+        // 載入使用者列表
+        async function loadUsers() {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/users`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                if (!response.ok) return;
+
+                const data = await response.json();
+                const listEl = document.getElementById('users-list');
+
+                if (!data.users || data.users.length === 0) {
+                    listEl.innerHTML = '<p style="color: var(--text-secondary); font-size: 13px;">尚無使用者</p>';
+                    return;
+                }
+
+                listEl.innerHTML = data.users.map(user => {
+                    const topicsList = user.topics && user.topics.length > 0
+                        ? user.topics.map(t => `<span style="background: rgba(0,255,136,0.1); padding: 2px 6px; margin-right: 4px; border-radius: 2px; font-size: 11px;">${t}</span>`).join('')
+                        : '<span style="color: var(--text-muted); font-size: 11px;">尚未追蹤任何專題</span>';
+
+                    return `
+                    <div style="background: var(--bg-primary); border: 1px solid var(--border-dim); padding: 12px; margin-bottom: 10px; border-radius: 2px; font-size: 13px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <div>
+                                <strong style="color: var(--text-primary);">${user.user_id.substring(0, 8)}...</strong>
+                                <span style="margin-left: 8px; padding: 2px 6px; background: ${user.role === 'admin' ? 'rgba(255,136,0,0.2)' : 'rgba(0,255,136,0.1)'}; color: ${user.role === 'admin' ? 'var(--color-orange)' : 'var(--color-radar)'}; border-radius: 2px; font-size: 11px;">
+                                    ${user.role === 'admin' ? '👑 管理員' : '👤 一般使用者'}
+                                </span>
+                            </div>
+                            <select onchange="updateUserRole('${user.user_id}', this.value)" style="background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 8px; border-radius: 2px; font-size: 12px;">
+                                <option value="user" ${user.role === 'user' ? 'selected' : ''}>一般使用者</option>
+                                <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>管理員</option>
+                            </select>
+                        </div>
+                        <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 6px;">
+                            📊 專題數: ${user.topic_count || 0} | 📅 註冊: ${new Date(user.created_at).toLocaleDateString()}
+                        </div>
+                        <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-dim);">
+                            <div style="color: var(--text-secondary); font-size: 11px; margin-bottom: 4px;">追蹤專題：</div>
+                            <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                                ${topicsList}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                }).join('');
+            } catch (error) {
+                console.error('載入使用者列表失敗:', error);
+            }
+        }
+
+        // 更新使用者角色
+        async function updateUserRole(userId, newRole) {
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/users/${userId}/role`, {
+                    method: 'PUT',
+                    headers: getAuthHeaders(),
+                    body: JSON.stringify({ role: newRole })
+                });
+
+                if (response.ok) {
+                    alert('角色已更新！');
+                    await loadUsers();
+                } else {
+                    const error = await response.json();
+                    alert('更新失敗: ' + (error.error || '未知錯誤'));
+                    await loadUsers(); // 重新載入以恢復原狀
+                }
+            } catch (error) {
+                alert('更新失敗: ' + error.message);
+                await loadUsers();
+            }
+        }
+
+        // 載入進度檢查
+        function startLoadingStatusCheck() {
+            checkLoadingStatus();
+            loadingCheckInterval = setInterval(checkLoadingStatus, 2000);
+        }
+
+        async function checkLoadingStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/loading-status`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                const status = await response.json();
+                const statusEl = document.getElementById('loading-status');
+
+                // 確保數字正確顯示
+                const current = status.current || 0;
+                const total = status.total || 0;
+
+                if (status.is_loading) {
+                    let statusText = '蒐集資料'; // Default
+                    if (status.phase === 'summary') {
+                        statusText = '生成動態中';
+                    }
+                    statusEl.textContent = `${statusText} ${current}/${total}`;
+                    statusEl.className = 'status-loading';
+                } else if (total > 0) {
+                    statusEl.textContent = '已更新';
+                    statusEl.className = 'status-loaded';
+                    // 載入完成後重新讀取專題數據
+                    await loadTopics();
+                    // 清除輪詢 interval，避免一直重複呼叫
+                    if (loadingCheckInterval) {
+                        clearInterval(loadingCheckInterval);
+                        loadingCheckInterval = null;
+                    }
+                } else {
+                    statusEl.textContent = '等待載入';
+                    statusEl.className = '';
+                }
+            } catch (error) {
+                console.error('檢查載入狀態失敗:', error);
+            }
+        }
+
+        // ESC 關閉 Modal
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                closeDeleteModal();
+                closeEditModal();
+            }
+        });
+    
+        // ============ Turbo 按鈕功能 ============
+        
+        async function updateTurboButtons() {
+            const cards = document.querySelectorAll('.topic-card');
+            
+            for (const card of cards) {
+                const topicId = card.dataset.topicId;
+                if (!topicId) continue;
+                
+                const btn = card.querySelector('.turbo-btn');
+                if (!btn) continue;
+                
+                try {
+                    const response = await fetch(`/api/topics/${topicId}/archive-count`, {
+                        headers: {'Authorization': `Bearer ${getAuthToken()}`}
+                    });
+                    const data = await response.json();
+                    
+                    // 更新 tooltip
+                    btn.dataset.tooltip = `累積 ${data.count} 則 (需 ${data.threshold} 則)`;
+                    
+                    // 更新狀態
+                    if (data.ready) {
+                        btn.classList.add('ready');
+                        btn.style.cursor = 'pointer';
+                        btn.dataset.tooltip = `累積 ${data.count} 則，點擊分析！`;
+                    } else {
+                        btn.classList.remove('ready');
+                        btn.style.cursor = 'not-allowed';
+                    }
+                    
+                } catch (error) {
+                    console.error('[Turbo] 檢查失敗:', error);
+                    btn.dataset.tooltip = '檢查失敗';
+                }
+            }
+        }
+        
+        async function turboAnalyze(topicId) {
+            const btn = document.querySelector(`[data-topic-id="${topicId}"] .turbo-btn`);
+            
+            if (!btn || !btn.classList.contains('ready')) {
+                alert('資料累積中，請稍後再試');
+                return;
+            }
+            
+            // 切換到分析中狀態
+            btn.classList.remove('ready');
+            btn.classList.add('analyzing');
+            btn.dataset.tooltip = '分析中...';
+            
+            try {
+                // TODO: 等實作角度發現API後連接
+                alert('角度發現功能開發中，敬請期待！\n\n目前已完成：\n- Turbo 按鈕 UI\n- 累積數量檢查\n\n待完成：\n- 新聞歸檔功能\n- AI 角度分析');
+                
+            } catch (error) {
+                alert('分析失敗：' + error.message);
+            } finally {
+                btn.classList.remove('analyzing');
+                updateTurboButtons();
+            }
+        }
+        
+        // 頁面載入時更新 Turbo 按鈕狀態
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(updateTurboButtons, 1000);
+            
+            // 每 5 分鐘更新一次
+            setInterval(updateTurboButtons, 5 * 60 * 1000);
+        });
+
+</script>
+</body>
+
+</html>

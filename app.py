@@ -731,6 +731,48 @@ def fetch_rss(url, source_name, timeout=15, max_items=50):
         print(f"[ERROR] 抓取 {source_name} 失敗: {e}")
         return []
 
+def fetch_rss_parallel(sources_dict, max_workers=8, timeout_per_source=20):
+    """
+    並行抓取多個 RSS 來源
+    
+    Args:
+        sources_dict: {'名稱': 'URL'} 字典
+        max_workers: 最大並行執行緒數（建議 5-10）
+        timeout_per_source: 每個來源的超時時間（秒）
+    
+    Returns:
+        list: 所有新聞項目的列表
+    """
+    all_news = []
+    
+    print(f"[RSS-PARALLEL] 開始並行抓取 {len(sources_dict)} 個來源（max_workers={max_workers}）")
+    start_time = time.time()
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 提交所有 RSS 抓取任務
+        future_to_source = {
+            executor.submit(fetch_rss, url, name, timeout=15, max_items=50): name
+            for name, url in sources_dict.items()
+        }
+        
+        # 按完成順序收集結果
+        completed = 0
+        for future in as_completed(future_to_source, timeout=timeout_per_source):
+            source_name = future_to_source[future]
+            completed += 1
+            try:
+                news_items = future.result()
+                all_news.extend(news_items)
+                print(f"[RSS-PARALLEL] ({completed}/{len(sources_dict)}) {source_name}: {len(news_items)} 則新聞")
+            except Exception as e:
+                print(f"[RSS-PARALLEL] ({completed}/{len(sources_dict)}) {source_name} 失敗: {e}")
+    
+    elapsed = time.time() - start_time
+    print(f"[RSS-PARALLEL] 完成！共 {len(all_news)} 則新聞，耗時 {elapsed:.1f} 秒")
+    
+    return all_news
+
+
 def fetch_google_news_by_keywords(keywords, max_items=50):
     """使用 Google News 搜索特定關鍵字的新聞，並提取原始媒體來源"""
     if not keywords:
@@ -1592,10 +1634,8 @@ def update_domestic_news():
     }
     print(f"\n[UPDATE:DOMESTIC] 開始更新國內新聞 - {datetime.now(TAIPEI_TZ).strftime('%H:%M:%S')}")
 
-    # 1. 抓取台灣新聞
-    all_news_tw = []
-    for name, url in RSS_SOURCES_TW.items():
-        all_news_tw.extend(fetch_rss(url, name, max_items=50))
+    # 1. 並行抓取台灣新聞（21 個來源）
+    all_news_tw = fetch_rss_parallel(RSS_SOURCES_TW, max_workers=8)
 
     # 2. 過濾台灣新聞
     topic_index = 0
@@ -1711,10 +1751,8 @@ def update_international_news():
     }
     print(f"\n[UPDATE:INTL] 開始更新國際新聞 - {datetime.now(TAIPEI_TZ).strftime('%H:%M:%S')}")
 
-    # 1. 抓取國際新聞
-    all_news_intl = []
-    for name, url in RSS_SOURCES_INTL.items():
-        all_news_intl.extend(fetch_rss(url, name, max_items=50))
+    # 1. 並行抓取國際新聞固定來源（4 個）
+    all_news_intl = fetch_rss_parallel(RSS_SOURCES_INTL, max_workers=4)
 
     # 2. 抓取 Google News 國際版
     for tid, cfg in topics_to_update.items():

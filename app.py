@@ -10,7 +10,7 @@ import feedparser
 import requests
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
@@ -25,6 +25,17 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
+
+# 引入認證模組
+import auth
+
+# 初始化 Supabase 客戶端 (使用 auth 模組的單例)
+try:
+    supabase = auth.get_supabase()
+except Exception as e:
+    print(f"[WARNING] 無法初始化 Supabase 客戶端: {e}")
+    supabase = None
+
 
 # ============ 設定 ============
 
@@ -708,7 +719,7 @@ def fetch_rss(url, source_name, timeout=15, max_items=50):
     
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=timeout, verify=False)
+        response = requests.get(url, headers=headers, timeout=timeout, verify=True)
         response.raise_for_status()
         feed = feedparser.parse(response.content)
 
@@ -804,7 +815,7 @@ def fetch_google_news_by_keywords(keywords, max_items=50):
 
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=15, verify=False)
+        response = requests.get(url, headers=headers, timeout=15, verify=True)
         response.raise_for_status()
         feed = feedparser.parse(response.content)
 
@@ -860,7 +871,7 @@ def fetch_google_news_intl(keywords, region_code, lang, max_items=30):
 
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=15, verify=False)
+        response = requests.get(url, headers=headers, timeout=15, verify=True)
         response.raise_for_status()
         feed = feedparser.parse(response.content)
 
@@ -3194,6 +3205,7 @@ def _run_angle_analysis_task(topic_id, user_id, analysis_id):
             .limit(100)\
             .execute()
             
+        news_data = news_response.data
         if not news_data:
             raise Exception("無足夠新聞資料可供分析")
             

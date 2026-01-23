@@ -48,6 +48,14 @@ RSS_SOURCES_TW = {
     'Google News TW': 'https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant',
     '公視新聞': 'https://news.pts.org.tw/xml/newsfeed.xml',
     '鏡週刊': 'https://www.mirrormedia.mg/rss/news.xml',
+    # 中央社 (7 個深度報導頻道)
+    '中央社政治': 'https://feeds.feedburner.com/rsscna/politics',
+    '中央社國際': 'https://feeds.feedburner.com/rsscna/intworld',
+    '中央社兩岸': 'https://feeds.feedburner.com/rsscna/mainland',
+    '中央社產經': 'https://feeds.feedburner.com/rsscna/finance',
+    '中央社科技': 'https://feeds.feedburner.com/rsscna/technology',
+    '中央社社會': 'https://feeds.feedburner.com/rsscna/social',
+    '中央社地方': 'https://feeds.feedburner.com/rsscna/local',
 }
 
 # 國際媒體 RSS 來源（英文/日文）

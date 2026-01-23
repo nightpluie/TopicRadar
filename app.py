@@ -740,7 +740,7 @@ def fetch_rss(url, source_name, timeout=15, max_items=50):
 
             items.append({
                 'title': title,
-                'link': entry.get('link', ''),
+                'link': link,  # 使用已檢查的 link
                 'source': source_name,
                 'published': published,
                 'summary': entry.get('summary', '')[:200]

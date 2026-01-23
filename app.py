@@ -980,10 +980,16 @@ def archive_news_to_db(user_id, topic_id, news_list):
     archived_count = 0
     for news in news_list:
         try:
+            # 確保有 hash key
+            news_hash = news.get('hash')
+            if not news_hash:
+                import hashlib
+                news_hash = hashlib.md5(news['title'].encode()).hexdigest()
+
             supabase.table('topic_archive').upsert({
                 'user_id': user_id,
                 'topic_id': topic_id,
-                'news_hash': news['hash'],
+                'news_hash': news_hash,
                 'title': news['title'],
                 'summary': news.get('summary', '')[:200],  # RSS 摘要
                 'url': news['link'],

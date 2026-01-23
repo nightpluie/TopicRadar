@@ -1667,19 +1667,10 @@
                 if (!btn) continue;
 
                 try {
-                    // [SIMULATION] 針對「長照」專題開啟模擬模式
-                    const topicName = topicsData[topicId]?.name || '';
-                    let data;
-
-                    if (topicName.includes('長照')) {
-                        console.log(`[SIMULATION] 強制啟動 ${topicName} 的 Turbo 狀態`);
-                        data = { count: 35, threshold: 30, ready: true };
-                    } else {
-                        const response = await fetch(`/api/topics/${topicId}/archive-count`, {
-                            headers: { 'Authorization': `Bearer ${authToken}` }
-                        });
-                        data = await response.json();
-                    }
+                    const response = await fetch(`/api/topics/${topicId}/archive-count`, {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    const data = await response.json();
 
                     // 計算水位百分比 (0-100%)
                     const waterLevel = Math.min((data.count / data.threshold) * 100, 100);

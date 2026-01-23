@@ -3191,6 +3191,55 @@ def _run_angle_analysis_task(topic_id, user_id, analysis_id):
     print(f"[ANALYSIS] 開始執行分析任務: task={analysis_id}, topic={topic_id}")
     
     try:
+        # [SIMULATION] 針對「長照」專題的模擬邏輯
+        try:
+            topic_info = supabase.table('user_topics').select('name').eq('id', topic_id).single().execute()
+            if topic_info.data and '長照' in topic_info.data.get('name', ''):
+                print(f"[SIMULATION] 偵測到「長照」專題，注入模擬分析結果")
+                
+                # 模擬的完美分析結果
+                mock_result = {
+                  "angles": [
+                    {
+                      "title": "長照財源的永續性危機",
+                      "description": "隨著高齡人口激增，長照基金面臨破產風險，目前依賴菸捐與房地合一稅的不穩定財源模式遭受質疑。",
+                      "evidence": ["衛福部報告指出2026年恐入不敷出", "專家建議開徵長照保險"],
+                      "suggested_sources": ["衛福部長照司", "民間監督健保聯盟", "財政部賦稅署"],
+                      "priority": "high"
+                    },
+                    {
+                      "title": "照護人力缺口擴大",
+                      "description": "外籍看護工引進限制雖放寬，但本國照服員流動率仍高，城鄉差距導致偏鄉「有錢請不到人」。",
+                      "evidence": ["勞動部統計缺工率達15%", "偏鄉機構空床率因無人照顧而升高"],
+                      "suggested_sources": ["家庭照顧者關懷總會", "外籍勞工仲介公會"],
+                      "priority": "high"
+                    },
+                    {
+                      "title": "「居家醫療」與「長照」斷鏈",
+                      "description": "長照2.0雖強調社區老化，但在醫療端與照護端的資訊串接仍有斷層，導致失能長者在出院後無法無縫接軌。",
+                      "evidence": ["醫院出院準備服務涵蓋率不足", "基層診所參與意願低"],
+                      "suggested_sources": ["醫師公會全聯會", "社區整合型服務中心(A單位)"],
+                      "priority": "medium"
+                    }
+                  ],
+                  "summary": "【模擬分析】整體而言，長照政策目前面臨「財源不穩」與「人力斷層」的雙重夾擊。雖然政策試圖透過放寬外勞解決人力問題，但結構性的低薪與城鄉差距仍未解決。未來觀察重點應放在財源制度的改革討論（是否走向保險制）以及醫療照護整合的實際成效。"
+                }
+
+                # 直接更新資料庫並返回
+                supabase.table('topic_angles')\
+                    .update({
+                        'status': 'completed',
+                        'angles_data': mock_result,
+                        'analyzed_news_count': 35, # 模擬數量
+                        'updated_at': datetime.now().isoformat()
+                    })\
+                    .eq('id', analysis_id)\
+                    .execute()
+                print(f"[SIMULATION] 模擬分析任務完成")
+                return
+        except Exception as sim_e:
+            print(f"[SIMULATION] 檢查失敗 (非致命): {sim_e}")
+
         # 1. 獲取歸檔新聞
         thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
         

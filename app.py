@@ -719,6 +719,12 @@ def fetch_rss(url, source_name, timeout=15, max_items=50):
             title = entry.get('title', '').strip()
             if not title:
                 continue
+            
+            # 獲取連結並檢查是否為社群媒體貼文
+            link = entry.get('link', '')
+            is_blacklisted = any(domain in link.lower() for domain in URL_BLACKLIST)
+            if is_blacklisted:
+                continue  # 跳過社群媒體貼文
 
             published = None
             if hasattr(entry, 'published_parsed') and entry.published_parsed:

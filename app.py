@@ -694,6 +694,18 @@ def generate_topic_summary(topic_id, topic_name=None, user_id=None):
 
 def fetch_rss(url, source_name, timeout=15, max_items=50):
     """抓取 RSS，增加最大抓取數量以確保能找到足夠的相關新聞"""
+    
+    # URL 黑名單：排除社群媒體貼文
+    URL_BLACKLIST = [
+        'facebook.com',
+        'fb.com',
+        'm.facebook.com',
+        'instagram.com',
+        'twitter.com',
+        'x.com',
+        'threads.net',
+    ]
+    
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         response = requests.get(url, headers=headers, timeout=timeout, verify=False)

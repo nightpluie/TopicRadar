@@ -32,9 +32,11 @@ import auth
 # 初始化 Supabase 客戶端 (使用 auth 模組的單例)
 try:
     supabase = auth.get_supabase()
+    AUTH_ENABLED = True
 except Exception as e:
     print(f"[WARNING] 無法初始化 Supabase 客戶端: {e}")
     supabase = None
+    AUTH_ENABLED = False
 
 
 # ============ 設定 ============
@@ -2799,13 +2801,9 @@ def reorder_topics():
 
 # ============ 認證 API ============
 
-# 嘗試載入認證模組（如果 Supabase 已設定）
-try:
-    import auth
-    AUTH_ENABLED = bool(os.getenv('SUPABASE_URL') and os.getenv('SUPABASE_KEY'))
-except ImportError:
-    AUTH_ENABLED = False
-    print("[AUTH] 認證模組未載入（auth.py 不存在或 Supabase 未設定）")
+# ============ 認證 API ============
+
+# 認證模組已在上方初始化
 
 @app.route('/api/auth/status')
 def auth_status():

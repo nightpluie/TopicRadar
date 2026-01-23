@@ -1071,8 +1071,9 @@ def update_single_topic_news(topic_id):
 
     DATA_STORE['last_update'] = datetime.now(TAIPEI_TZ).isoformat()
 
-    # 儲存到快取檔案
+    # 儲存到快取（Supabase 或檔案）
     save_data_cache()
+    print(f"[UPDATE] {cfg['name']}: 資料已儲存")_data_cache()
 
     print(f"[UPDATE] {cfg['name']} 更新完成")
 

@@ -3354,8 +3354,40 @@ def get_analysis_status(topic_id):
             return jsonify({'status': 'none', 'data': None})
             
         record = result.data[0]
+        status = record['status']
+        
+        # 處理卡住的 processing 狀態：如果超過 5 分鐘，視為失敗
+        if status == 'processing':
+            try:
+                created_at_str = record.get('created_at', '')
+                if created_at_str:
+                    # 解析時間戳
+                    from datetime import datetime, timedelta
+                    if '+' in created_at_str:
+                        created_at = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                    else:
+                        created_at = datetime.fromisoformat(created_at_str)
+                    
+                    # 計算經過時間 (使用 UTC)
+                    import pytz
+                    now_utc = datetime.now(pytz.UTC)
+                    if created_at.tzinfo is None:
+                        created_at = pytz.UTC.localize(created_at)
+                    
+                    elapsed = now_utc - created_at
+                    if elapsed > timedelta(minutes=5):
+                        print(f"[ANALYSIS] 偵測到過期的 processing 狀態（已超過 5 分鐘），標記為 stale")
+                        # 更新為 failed 狀態
+                        supabase.table('topic_angles')\
+                            .update({'status': 'failed', 'error_message': '分析超時，請重新嘗試'})\
+                            .eq('id', record['id'])\
+                            .execute()
+                        status = 'failed'
+            except Exception as time_e:
+                print(f"[ANALYSIS] 時間檢查失敗: {time_e}")
+        
         return jsonify({
-            'status': record['status'],
+            'status': status,
             'data': record.get('angles_data'),
             'error': record.get('error_message'),
             'timestamp': record['updated_at']

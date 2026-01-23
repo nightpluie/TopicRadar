@@ -1041,8 +1041,12 @@ def analyze_topic_angles(topic_id, news_data, summary_context=None):
 }}"""
     
     try:
+        # 使用使用者指定的 Gemini 3.0 Pro Preview 模型
+        model_name = "gemini-3.0-pro-preview" 
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
+        
         response = requests.post(
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro-002:generateContent",
+            url,
             headers={"Content-Type": "application/json"},
             params={"key": GEMINI_API_KEY},
             json={
@@ -1053,19 +1057,41 @@ def analyze_topic_angles(topic_id, news_data, summary_context=None):
                     "responseMimeType": "application/json"
                 }
             },
-            timeout=30
+            timeout=60 # 增加 timeout 避免分析過久超時
         )
         
+        if response.status_code != 200:
+            error_msg = f"API Error {response.status_code}: {response.text}"
+            print(f"[AI-ANALYZE] {error_msg}")
+            return {
+                "angles": [],
+                "summary": f"分析服務暫時無法使用 ({response.status_code})"
+            }
+        
         result = response.json()
+        
+        if 'candidates' not in result:
+            print(f"[AI-ANALYZE] 分析失敗，API 回應異常: {result}")
+            # 檢查是否有 safety ratings 導致的阻擋
+            if 'promptFeedback' in result:
+                return {
+                    "angles": [],
+                    "summary": "分析內容因安全政策被阻擋，無法產生報告。"
+                }
+            return {
+                "angles": [],
+                "summary": "無法解析 AI 回應，請稍後再試。"
+            }
+            
         angles_text = result['candidates'][0]['content']['parts'][0]['text']
         angles_data = json.loads(angles_text)
         return angles_data
         
     except Exception as e:
-        print(f"[AI-ANALYZE] Gemini 分析失敗: {e}")
+        print(f"[AI-ANALYZE] Gemini 分析失敗 (Exception): {e}")
         return {
             "angles": [],
-            "summary": f"分析失敗: {str(e)}"
+            "summary": f"分析過程發生錯誤: {str(e)}"
         }
 
 
@@ -3170,20 +3196,6 @@ def get_archive_count(topic_id):
             has_report = analysis_result.data[0]['status'] == 'completed'
             analysis_status = analysis_result.data[0]['status']
         
-        # [SIMULATION] 針對「長照」專題的模擬邏輯：如果資料不足，欺騙前端說已就緒
-        try:
-            topic_info = supabase.table('user_topics').select('name').eq('id', topic_id).single().execute()
-            if topic_info.data and '長照' in topic_info.data.get('name', '') and actual_count < 30:
-                print(f"[SIMULATION] 偵測到「長照」專題且資料不足 ({actual_count})，回傳模擬數量")
-                return jsonify({
-                    'count': 35, 
-                    'ready': True, 
-                    'threshold': 30,
-                    'has_report': has_report,
-                    'analysis_status': analysis_status
-                })
-        except Exception as sim_e:
-            print(f"[SIMULATION] 檢查失敗: {sim_e}")
 
         return jsonify({
             'count': actual_count,
@@ -3220,42 +3232,7 @@ def _run_angle_analysis_task(topic_id, user_id, analysis_id):
             
         news_data = news_response.data
         
-        # [SIMULATION] 針對「長照」專題的資料填充模擬
-        # 如果是長照專題且資料不足，自動生成模擬新聞供 AI 分析
-        try:
-            topic_info = supabase.table('user_topics').select('name').eq('id', topic_id).single().execute()
-            if topic_info.data and '長照' in topic_info.data.get('name', ''):
-                if not news_data or len(news_data) < 30:
-                    print(f"[SIMULATION] 偵測到「長照」專題資料不足，生成模擬新聞資料供 AI 分析...")
-                    current_count = len(news_data) if news_data else 0
-                    needed = 35 - current_count
-                    
-                    mock_titles = [
-                        "長照基金2026年恐破產，衛福部研擬調漲菸捐救急",
-                        "偏鄉長照悲歌：有錢請不到人，外籍看護成唯一浮木",
-                        "長照2.0檢討：居家醫療與照護斷鏈，失能長者無所適從",
-                        "專家呼籲開徵「長照保險」，解決財源不穩定問題",
-                        "外籍看護工逃跑率攀升，雇主協會要求加強管理",
-                        "長照機構收費亂象，消基會籲政府介入稽查",
-                        "家庭照顧者壓力大，甚至發生長照悲劇，喘息服務看得到吃不到",
-                        "日照中心一位難求，排隊要等半年",
-                        "長照人力荒！年輕人不願投入，照服員平均年齡偏高",
-                        "住宿式機構補助加碼，減輕家屬負擔"
-                    ]
-                    
-                    for i in range(needed):
-                        base_title = mock_titles[i % len(mock_titles)]
-                        days_ago = (i % 25) + 1
-                        
-                        news_data.append({
-                            'title': f"[模擬新聞] {base_title}",
-                            'summary': f"這是一則關於{base_title}的相關報導，討論了目前長照政策面臨的挑戰與困境。專家指出需要政府與民間共同解決。",
-                            'source': '模擬通訊社',
-                            'published_at': (datetime.now() - timedelta(days=days_ago)).isoformat()
-                        })
-                    print(f"[SIMULATION] 已生成 {needed} 則模擬新聞，總計 {len(news_data)} 則，開始送入 AI 分析")
-        except Exception as sim_e:
-            print(f"[SIMULATION] 資料填充失敗: {sim_e}")
+
 
         if not news_data:
             raise Exception("無足夠新聞資料可供分析")

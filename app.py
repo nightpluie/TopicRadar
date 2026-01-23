@@ -1047,8 +1047,8 @@ def analyze_topic_angles(topic_id, news_data, summary_context=None):
 }}"""
     
     try:
-        # 使用使用者指定的 Gemini 3.0 Pro Preview 模型
-        model_name = "gemini-3.0-pro-preview" 
+        # 使用正確的 Gemini 3 Pro Preview 模型名稱
+        model_name = "gemini-3-pro-preview" 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         
         response = requests.post(

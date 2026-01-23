@@ -1085,4 +1085,138 @@ a.news-title:hover {
     .bottom-bar {
         font-size: 9px;
     }
+}/* ========== Turbo 按鈕與分析模組 ========== */
+
+.turbo-btn {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #0D1117;
+    border: 1px solid #30363D;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 100;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+    /* 確保水位不溢出 */
+}
+
+/* 準備就緒狀態 */
+.turbo-btn.ready {
+    border-color: #39FF14;
+    box-shadow: 0 0 15px rgba(57, 255, 20, 0.2);
+}
+
+.turbo-btn.ready:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 20px rgba(57, 255, 20, 0.4);
+    background: #161B22;
+}
+
+/* 圖示樣式 */
+.turbo-icon {
+    width: 20px;
+    height: 20px;
+    fill: #3A3A3A;
+    /* 預設深灰色 */
+    transition: fill 0.3s ease;
+    z-index: 2;
+    /* 在水位之上 */
+    position: relative;
+}
+
+.turbo-btn.ready .turbo-icon {
+    fill: #39FF14;
+    /* 就緒時螢光綠 */
+    filter: drop-shadow(0 0 2px rgba(57, 255, 20, 0.5));
+}
+
+/* 水位進度指示器 */
+.water-level {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: linear-gradient(to top, rgba(57, 255, 20, 0.1), rgba(57, 255, 20, 0.05));
+    border-top: 1px solid rgba(57, 255, 20, 0.3);
+    transition: height 0.5s ease;
+    z-index: 1;
+}
+
+/* 分析中狀態 */
+.turbo-btn.analyzing {
+    animation: pulse-ring 1.5s infinite;
+    cursor: not-allowed;
+    background: #161B22;
+}
+
+.turbo-btn.analyzing .turbo-icon {
+    fill: #39FF14;
+    animation: turbo-spin 1s linear infinite;
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 2px solid rgba(57, 255, 20, 0.3);
+    border-top-color: #39FF14;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes turbo-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes pulse-ring {
+    0% {
+        box-shadow: 0 0 0 0 rgba(57, 255, 20, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(57, 255, 20, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(57, 255, 20, 0);
+    }
+}
+
+/* Tooltip 提示 */
+.turbo-btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 110%;
+    right: 0;
+    background: #1F2937;
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s;
+    border: 1px solid #30363D;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    z-index: 1000;
+}
+
+.turbo-btn:hover::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(-5px);
 }

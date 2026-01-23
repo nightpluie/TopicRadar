@@ -956,6 +956,106 @@ def filter_news_by_keywords(news_list, topic_config, is_international=False):
     
     return filtered
 
+
+# ============ 新聞歸檔系統（角度發現功能） ============
+
+def archive_news_to_db(user_id, topic_id, news_list):
+    """將過濾後的新聞歸檔到資料庫"""
+    if not AUTH_ENABLED:
+        return
+    
+    archived_count = 0
+    for news in news_list:
+        try:
+            supabase.table('topic_archive').upsert({
+                'user_id': user_id,
+                'topic_id': topic_id,
+                'news_hash': news['hash'],
+                'title': news['title'],
+                'summary': news.get('summary', '')[:200],  # RSS 摘要
+                'url': news['link'],
+                'source': news['source'],
+                'published_at': news['published'].isoformat() if hasattr(news['published'], 'isoformat') else str(news['published'])
+            }, on_conflict='user_id,topic_id,news_hash').execute()
+            archived_count += 1
+        except Exception as e:
+            print(f"[ARCHIVE] 歸檔失敗 {news.get('title', '')[:30]}: {e}")
+    
+    if archived_count > 0:
+        print(f"[ARCHIVE] 成功歸檔 {archived_count} 則新聞")
+
+def analyze_topic_angles(topic_id, news_data, summary_context=None):
+    """使用 Gemini 2.0 Pro 分析專題角度"""
+    
+    # 準備新聞摘要
+    news_text = "\n\n".join([
+        f"[{item.get('published_at', '')[:10]}] {item.get('source', '')}\n標題：{item.get('title', '')}\n摘要：{item.get('summary', '')[:200]}"
+        for item in news_data[:100]
+    ])
+    
+    # 準備背景資訊
+    context_text = ""
+    if summary_context:
+        context_text = f"【專題背景與最新動態】 (由 Perplexity AI 提供)\n{summary_context}\n\n"
+
+    # Gemini Prompt
+    prompt = f"""你是資深調查記者的 AI 助手。分析以下新聞資料，並參考專題背景，發現值得深入調查的專題角度。
+
+{context_text}資料範圍：最近 30 天，共 {len(news_data)} 則新聞
+
+【新聞資料詳情】
+{news_text}
+
+請提出 3-5 個值得深入調查的專題角度。
+
+分析要求：
+1. 找出「模式」、「矛盾」、「缺口」
+2. 每個角度要具體可執行
+3. 優先關注利害關係人立場差異、政策與現實落差、被忽略群體、異常趨勢
+
+輸出 JSON 格式：
+{{
+  "angles": [
+    {{
+      "title": "角度標題（15字內）",
+      "description": "為何值得追蹤（50字內）",
+      "evidence": ["證據1", "證據2"],
+      "suggested_sources": ["建議採訪1", "建議採訪2"],
+      "priority": "high"
+    }}
+  ],
+  "summary": "整體觀察（100字內）"
+}}"""
+    
+    try:
+        response = requests.post(
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-pro-002:generateContent",
+            headers={"Content-Type": "application/json"},
+            params={"key": GEMINI_API_KEY},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.3,
+                    "maxOutputTokens": 2048,
+                    "responseMimeType": "application/json"
+                }
+            },
+            timeout=30
+        )
+        
+        result = response.json()
+        angles_text = result['candidates'][0]['content']['parts'][0]['text']
+        angles_data = json.loads(angles_text)
+        return angles_data
+        
+    except Exception as e:
+        print(f"[AI-ANALYZE] Gemini 分析失敗: {e}")
+        return {
+            "angles": [],
+            "summary": f"分析失敗: {str(e)}"
+        }
+
+
 def update_single_topic_news(topic_id):
     """只更新單一專題的新聞（用於新增專題時）"""
     if topic_id not in TOPICS:
@@ -1254,6 +1354,9 @@ def _load_user_data_worker(user_id):
             # 按時間排序並取前 10 則
             filtered_tw.sort(key=lambda x: x['published'], reverse=True)
             DATA_STORE[user_id]['topics'][tid] = filtered_tw[:10]
+            
+            # 歸檔所有過濾後的新聞
+            archive_news_to_db(user_id, tid, filtered_tw)
 
             # 過濾國際新聞
             filtered_intl = filter_news_by_keywords(all_news_intl, cfg, is_international=True)
@@ -2949,6 +3052,62 @@ load_topics_config()
 load_data_cache()  # 先從快取載入資料（快速啟動）
 init_scheduler()
 
+
+
+@app.route('/api/topics/<topic_id>/discover-angles', methods=['POST'])
+def discover_topic_angles(topic_id):
+    """AI 分析專題角度"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '認證系統未啟用'}), 503
+    
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not token:
+        return jsonify({'error': '未登入'}), 401
+    
+    user = auth.get_user_from_token(token)
+    if not user:
+        return jsonify({'error': '認證失敗'}), 401
+    
+    try:
+        # 檢查資料量
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+        
+        count_result = supabase.table('topic_archive')\
+            .select('id', count='exact')\
+            .eq('topic_id', topic_id)\
+            .eq('user_id', user.id)\
+            .gte('published_at', thirty_days_ago)\
+            .execute()
+        
+        if count_result.count < 30:
+            return jsonify({
+                'status': 'insufficient',
+                'count': count_result.count,
+                'required': 30,
+                'message': f'資料不足，還需要 {30 - count_result.count} 則新聞'
+            })
+        
+        # 取得新聞資料
+        news_result = supabase.table('topic_archive')\
+            .select('title, summary, published_at, source')\
+            .eq('topic_id', topic_id)\
+            .eq('user_id', user.id)\
+            .gte('published_at', thirty_days_ago)\
+            .order('published_at', desc=True)\
+            .limit(100)\
+            .execute()
+        
+        # AI 分析
+        angles_data = analyze_topic_angles(topic_id, news_result.data)
+        angles_data['status'] = 'success'
+        angles_data['analyzed_count'] = len(news_result.data)
+        
+        return jsonify(angles_data)
+        
+    except Exception as e:
+        print(f"[DISCOVER-ANGLES] 錯誤: {e}")
+        return jsonify({'error': f'分析失敗: {str(e)}'}), 500
+
 if __name__ == '__main__':
     import threading
     import sys
@@ -2957,3 +3116,203 @@ if __name__ == '__main__':
     # 使用者登入時才會載入他們的專題資料
     print("[SERVER] 伺服器啟動中... (使用按需載入策略，使用者登入時才載入資料)")
     app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
+
+# ============ 角度發現功能 API ============
+
+@app.route('/api/topics/<topic_id>/archive-count', methods=['GET'])
+def get_archive_count(topic_id):
+    """取得專題累積新聞數量（Turbo 按鈕狀態檢查）"""
+    if not AUTH_ENABLED:
+        return jsonify({'count': 0, 'ready': False, 'threshold': 30})
+    
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    if not token:
+        return jsonify({'error': '未登入'}), 401
+    
+    user = auth.get_user_from_token(token)
+    if not user:
+        return jsonify({'error': '認證失敗'}), 401
+    
+    try:
+        # 查詢過去 30 天累積數量
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+        
+        count_result = supabase.table('topic_archive')\
+            .select('id', count='exact')\
+            .eq('topic_id', topic_id)\
+            .eq('user_id', user.id)\
+            .gte('published_at', thirty_days_ago)\
+            .execute()
+        
+        actual_count = count_result.count
+        
+        # 檢查是否有已完成的分析報告
+        analysis_result = supabase.table('topic_angles')\
+            .select('id, status')\
+            .eq('topic_id', topic_id)\
+            .eq('user_id', user.id)\
+            .order('created_at', desc=True)\
+            .limit(1)\
+            .execute()
+            
+        has_report = False
+        analysis_status = None
+        if analysis_result.data:
+            has_report = analysis_result.data[0]['status'] == 'completed'
+            analysis_status = analysis_result.data[0]['status']
+        
+        return jsonify({
+            'count': actual_count,
+            'ready': actual_count >= 30,
+            'threshold': 30,
+            'has_report': has_report,
+            'analysis_status': analysis_status
+        })
+    except Exception as e:
+        print(f"[ERROR] 查詢歸檔數量失敗: {e}")
+        return jsonify({
+            'count': 0,
+            'ready': False,
+            'threshold': 30,
+            'error': str(e)
+        }), 500
+
+def _run_angle_analysis_task(topic_id, user_id, analysis_id):
+    """背景執行：執行角度分析並更新資料庫"""
+    print(f"[ANALYSIS] 開始執行分析任務: task={analysis_id}, topic={topic_id}")
+    
+    try:
+        # 1. 獲取歸檔新聞
+        thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+        
+        news_response = supabase.table('topic_archive')\
+            .select('title, summary, source, published_at')\
+            .eq('topic_id', topic_id)\
+            .eq('user_id', user_id)\
+            .gte('published_at', thirty_days_ago)\
+            .order('published_at', desc=True)\
+            .limit(100)\
+            .execute()
+            
+        if not news_data:
+            raise Exception("無足夠新聞資料可供分析")
+            
+        # 1.5 獲取該專題的最新摘要作為背景 (來自 DATA_STORE)
+        summary_context = None
+        if user_id in DATA_STORE and 'summaries' in DATA_STORE[user_id]:
+            summary_data = DATA_STORE[user_id]['summaries'].get(topic_id)
+            if summary_data:
+                summary_context = summary_data.get('text', '')
+                print(f"[ANALYSIS] 已為專題 {topic_id} 找到背景摘要，長度: {len(summary_context)}")
+
+        # 2. 執行 AI 分析
+        # 注意：這裡直接呼叫 app.py 中已有的 analyze_topic_angles 函數邏輯
+        result = analyze_topic_angles(topic_id, news_data, summary_context) # 這裡重用現有邏輯
+        
+        # 3. 更新資料庫
+        supabase.table('topic_angles')\
+            .update({
+                'status': 'completed',
+                'angles_data': result,
+                'analyzed_news_count': len(news_data),
+                'updated_at': datetime.now().isoformat()
+            })\
+            .eq('id', analysis_id)\
+            .execute()
+            
+        print(f"[ANALYSIS] 分析任務完成: {analysis_id}")
+        
+    except Exception as e:
+        print(f"[ANALYSIS] 分析任務失敗: {e}")
+        try:
+            supabase.table('topic_angles')\
+                .update({
+                    'status': 'failed',
+                    'error_message': str(e),
+                    'updated_at': datetime.now().isoformat()
+                })\
+                .eq('id', analysis_id)\
+                .execute()
+        except:
+            pass
+
+@app.route('/api/topics/<topic_id>/analyze', methods=['POST'])
+def trigger_analysis(topic_id):
+    """觸發角度分析 (Turbo 功能)"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '未啟用認證'}), 401
+        
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    user = auth.get_user_from_token(token)
+    if not user:
+        return jsonify({'error': '認證失敗'}), 401
+        
+    try:
+        # 建立一筆 processing 狀態的記錄
+        insert_result = supabase.table('topic_angles')\
+            .insert({
+                'user_id': user.id,
+                'topic_id': topic_id,
+                'status': 'processing',
+                'data_range_start': (datetime.now() - timedelta(days=30)).isoformat(),
+                'data_range_end': datetime.now().isoformat()
+            })\
+            .execute()
+            
+        if not insert_result.data:
+            return jsonify({'error': '無法建立分析任務'}), 500
+            
+        analysis_id = insert_result.data[0]['id']
+        
+        # 啟動背景執行緒
+        thread = threading.Thread(
+            target=_run_angle_analysis_task,
+            args=(topic_id, user.id, analysis_id)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        return jsonify({
+            'status': 'processing', 
+            'analysis_id': analysis_id,
+            'message': '分析任務已啟動'
+        }), 202
+        
+    except Exception as e:
+        print(f"[ERROR] 啟動分析失敗: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/topics/<topic_id>/analysis-status', methods=['GET'])
+def get_analysis_status(topic_id):
+    """查詢最新的分析狀態與結果"""
+    if not AUTH_ENABLED:
+        return jsonify({'error': '未啟用認證'}), 401
+        
+    token = request.headers.get('Authorization', '').replace('Bearer ', '')
+    user = auth.get_user_from_token(token)
+    if not user:
+        return jsonify({'error': '認證失敗'}), 401
+        
+    try:
+        # 查詢最新一筆分析
+        result = supabase.table('topic_angles')\
+            .select('*')\
+            .eq('topic_id', topic_id)\
+            .eq('user_id', user.id)\
+            .order('created_at', desc=True)\
+            .limit(1)\
+            .execute()
+            
+        if not result.data:
+            return jsonify({'status': 'none', 'data': None})
+            
+        record = result.data[0]
+        return jsonify({
+            'status': record['status'],
+            'data': record.get('angles_data'),
+            'error': record.get('error_message'),
+            'timestamp': record['updated_at']
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

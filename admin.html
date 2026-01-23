@@ -110,6 +110,8 @@
             border: 1px solid var(--border);
             border-radius: 2px;
             padding: 20px;
+            position: relative;
+            /* 讓內部絕對定位的元素相對於此卡片定位 */
         }
 
         .topic-card.editing {
@@ -457,6 +459,227 @@
             display: block;
             margin-bottom: 4px;
         }
+
+        /* ============ Turbo 按鈕 - 角度發現 ============ */
+        .turbo-btn {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 2px solid #30363D;
+            background: rgba(48, 54, 61, 0.2);
+            color: #3A3A3A;
+            /* 更淡的灰色閃電 */
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: not-allowed;
+            opacity: 0.3;
+            /* 降低透明度，更低調 */
+            transition: all 0.3s ease;
+            z-index: 5;
+            user-select: none;
+            overflow: hidden;
+            /* 為水位效果準備 */
+        }
+
+        .turbo-btn.ready {
+            border-color: #39FF14;
+            background: radial-gradient(circle at center, rgba(57, 255, 20, 0.3), transparent);
+            color: #39FF14;
+            cursor: pointer;
+            opacity: 1;
+            box-shadow:
+                0 0 20px rgba(57, 255, 20, 0.6),
+                0 0 40px rgba(57, 255, 20, 0.3),
+                inset 0 0 20px rgba(57, 255, 20, 0.2);
+            animation: turbo-pulse 1.5s ease-in-out infinite;
+        }
+
+        .turbo-btn.ready:hover {
+            transform: scale(1.1);
+            box-shadow:
+                0 0 30px rgba(57, 255, 20, 0.8),
+                0 0 60px rgba(57, 255, 20, 0.5),
+                inset 0 0 30px rgba(57, 255, 20, 0.3);
+        }
+
+        @keyframes turbo-pulse {
+
+            0%,
+            100% {
+                box-shadow:
+                    0 0 20px rgba(57, 255, 20, 0.6),
+                    0 0 40px rgba(57, 255, 20, 0.3);
+            }
+
+            50% {
+                box-shadow:
+                    0 0 30px rgba(57, 255, 20, 0.8),
+                    0 0 60px rgba(57, 255, 20, 0.5),
+                    0 0 80px rgba(57, 255, 20, 0.2);
+            }
+        }
+
+        .turbo-btn.analyzing {
+            animation: turbo-spin 1s linear infinite, turbo-pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes turbo-spin {
+            from {
+                transform: rotate(0deg);
+            }
+
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* 水位進度顯示 */
+        .turbo-btn::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: var(--water-level, 0%);
+            background: linear-gradient(to top, rgba(57, 255, 20, 0.2), rgba(57, 255, 20, 0.1));
+            border-radius: 0 0 50% 50%;
+            transition: height 0.5s ease;
+            z-index: -1;
+        }
+
+        .turbo-btn::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: -30px;
+            right: 0;
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .turbo-btn:hover::after {
+            opacity: 1;
+        }
+
+        /* ============ 分析報告 Modal ============ */
+        .modal-content.large {
+            max-width: 800px;
+            width: 90%;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+
+        .analysis-loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-secondary);
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(57, 255, 20, 0.1);
+            border-top-color: var(--color-radar);
+            border-radius: 50%;
+            margin: 0 auto 20px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .analysis-content {
+            padding: 10px 0;
+        }
+
+        .analysis-summary {
+            background: rgba(57, 255, 20, 0.05);
+            border: 1px solid rgba(57, 255, 20, 0.2);
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .angle-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-dim);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            transition: all 0.2s;
+        }
+
+        .angle-card:hover {
+            border-color: var(--color-radar);
+            transform: translateY(-2px);
+        }
+
+        .angle-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .angle-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--color-radar);
+        }
+
+        .angle-priority {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: var(--border-dim);
+            color: var(--text-secondary);
+        }
+
+        .angle-priority.high {
+            background: rgba(255, 50, 50, 0.2);
+            color: #ff4d4d;
+        }
+
+        .angle-desc {
+            color: var(--text-primary);
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .angle-meta {
+            font-size: 13px;
+            color: var(--text-secondary);
+            background: var(--bg-primary);
+            padding: 10px;
+            border-radius: 4px;
+        }
+
+        .meta-label {
+            color: var(--text-muted);
+            margin-right: 5px;
+        }
+
+        .meta-list {
+            margin: 5px 0 0 0;
+            padding-left: 20px;
+        }
     </style>
 </head>
 
@@ -608,6 +831,35 @@
             </ul>
             <div class="btn-group" style="justify-content: flex-end; margin-top: 25px;">
                 <button type="button" class="btn btn-primary" onclick="closeRulesModal()">了解</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 角度分析報告 Modal -->
+    <div class="modal" id="analysis-modal">
+        <div class="modal-content large">
+            <h2 id="analysis-title" style="color: var(--color-radar); margin-bottom: 20px;">專題分析報告</h2>
+
+            <div id="analysis-loading" class="analysis-loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>AI 正在深入分析新聞資料...</p>
+                <p style="font-size: 13px; margin-top: 10px; color: var(--text-muted);">
+                    約需 30-60 秒，您可以關閉視窗，稍後再回來查看。<br>
+                    系統將在背景持續運作，完成後按鈕將顯示為可查看狀態。
+                </p>
+            </div>
+
+            <div id="analysis-result" class="analysis-content" style="display: none;">
+                <!-- JS 渲染內容 -->
+            </div>
+
+            <div id="analysis-error" class="analysis-loading" style="display: none; color: #ff4d4d;">
+                <p>分析發生錯誤</p>
+                <p id="analysis-error-msg" style="font-size: 13px; margin-top: 10px; color: var(--text-muted);"></p>
+            </div>
+
+            <div class="btn-group" style="justify-content: flex-end; margin-top: 25px;">
+                <button type="button" class="btn btn-secondary" onclick="closeAnalysisModal()">關閉</button>
             </div>
         </div>
     </div>
@@ -801,6 +1053,12 @@
                             `).join('')}
                         </div>
                     ` : ''}
+                    <button class="turbo-btn" data-topic-id="${id}" data-tooltip="檢查中..." onclick="turboAnalyze('${id}')">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                            <path d="M7 2v11h3v9l7-12h-4l4-8z"/>
+                        </svg>
+                    </button>
+
                 `;
 
                 // 綁定拖曳事件
@@ -1395,6 +1653,194 @@
                 closeEditModal();
             }
         });
+
+        // ============ Turbo 按鈕功能 ============
+
+        async function updateTurboButtons() {
+            const cards = document.querySelectorAll('.topic-card');
+
+            for (const card of cards) {
+                const topicId = card.dataset.topicId;
+                if (!topicId) continue;
+
+                const btn = card.querySelector('.turbo-btn');
+                if (!btn) continue;
+
+                try {
+                    const response = await fetch(`/api/topics/${topicId}/archive-count`, {
+                        headers: { 'Authorization': `Bearer ${authToken}` }
+                    });
+                    const data = await response.json();
+
+                    // 計算水位百分比 (0-100%)
+                    const waterLevel = Math.min((data.count / data.threshold) * 100, 100);
+                    btn.style.setProperty('--water-level', `${waterLevel}%`);
+
+                    // 更新 tooltip
+                    btn.dataset.tooltip = `累積 ${data.count} 則 (需 ${data.threshold} 則)`;
+
+                    // 更新狀態
+                    if (data.ready) {
+                        btn.classList.add('ready');
+                        btn.style.cursor = 'pointer';
+                        btn.dataset.tooltip = `累積 ${data.count} 則，點擊分析！`;
+                    } else {
+                        btn.classList.remove('ready');
+                        btn.style.cursor = 'not-allowed';
+                    }
+
+                } catch (error) {
+                    console.error('[Turbo] 檢查失敗:', error);
+                    btn.dataset.tooltip = '檢查失敗';
+                }
+            }
+        }
+
+        let analysisPollInterval = null;
+
+        function closeAnalysisModal() {
+            document.getElementById('analysis-modal').classList.remove('active');
+            if (analysisPollInterval) {
+                clearInterval(analysisPollInterval);
+                analysisPollInterval = null;
+            }
+        }
+
+        async function turboAnalyze(topicId) {
+            const btn = document.querySelector(`[data-topic-id="${topicId}"] .turbo-btn`);
+
+            // 開啟 Modal
+            document.getElementById('analysis-modal').classList.add('active');
+            document.getElementById('analysis-loading').style.display = 'block';
+            document.getElementById('analysis-result').style.display = 'none';
+            document.getElementById('analysis-error').style.display = 'none';
+
+            const topicName = topicsData[topicId]?.name || '專題';
+            document.getElementById('analysis-title').innerHTML = `⚡ ${topicName} <span style="font-size: 0.6em; color: var(--text-muted); font-weight: normal;">深入調查分析</span>`;
+
+            try {
+                // 1. 先確認狀態
+                const statusRes = await fetch(`${API_BASE}/api/topics/${topicId}/analysis-status`, {
+                    headers: getAuthHeaders()
+                });
+                const statusData = await statusRes.json();
+
+                if (statusData.status === 'completed') {
+                    renderAnalysisResult(statusData.data);
+                    return;
+                } else if (statusData.status === 'processing') {
+                    pollAnalysisStatus(topicId);
+                    return;
+                }
+
+                // 2. 若無進行中/完成的任務，則啟動新分析
+                const triggerRes = await fetch(`${API_BASE}/api/topics/${topicId}/analyze`, {
+                    method: 'POST',
+                    headers: getAuthHeaders()
+                });
+
+                if (triggerRes.ok) {
+                    // 更新按鈕狀態
+                    if (btn) {
+                        btn.classList.add('analyzing');
+                        btn.dataset.tooltip = '分析中...';
+                    }
+                    pollAnalysisStatus(topicId);
+                } else {
+                    const err = await triggerRes.json();
+                    throw new Error(err.message || '無法啟動分析');
+                }
+
+            } catch (error) {
+                document.getElementById('analysis-loading').style.display = 'none';
+                document.getElementById('analysis-error').style.display = 'block';
+                document.getElementById('analysis-error-msg').textContent = error.message;
+            }
+        }
+
+        function pollAnalysisStatus(topicId) {
+            if (analysisPollInterval) clearInterval(analysisPollInterval);
+
+            analysisPollInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/api/topics/${topicId}/analysis-status`, {
+                        headers: getAuthHeaders()
+                    });
+                    const data = await res.json();
+
+                    if (data.status === 'completed') {
+                        clearInterval(analysisPollInterval);
+                        renderAnalysisResult(data.data);
+                        updateTurboButtons(); // 更新按鈕外觀
+                    } else if (data.status === 'failed') {
+                        clearInterval(analysisPollInterval);
+                        document.getElementById('analysis-loading').style.display = 'none';
+                        document.getElementById('analysis-error').style.display = 'block';
+                        document.getElementById('analysis-error-msg').textContent = data.error || '分析失敗';
+                        updateTurboButtons();
+                    }
+                } catch (e) {
+                    console.error('Polling error', e);
+                }
+            }, 2000);
+        }
+
+        function renderAnalysisResult(data) {
+            document.getElementById('analysis-loading').style.display = 'none';
+            const container = document.getElementById('analysis-result');
+            container.style.display = 'block';
+
+            if (!data || !data.angles) {
+                container.innerHTML = '<p class="text-center">分析結果格式異常</p>';
+                return;
+            }
+
+            let html = `
+                <div class="analysis-summary">
+                    <strong>💡 整體觀察：</strong><br>
+                    ${data.summary}
+                </div>
+             `;
+
+            data.angles.forEach(angle => {
+                html += `
+                    <div class="angle-card">
+                        <div class="angle-header">
+                            <div class="angle-title">${angle.title}</div>
+                            <div class="angle-priority ${angle.priority === 'high' ? 'high' : ''}">
+                                ${angle.priority === 'high' ? '🔥 高優先' : '一般'}
+                            </div>
+                        </div>
+                        <div class="angle-desc">${angle.description}</div>
+                        
+                        <div class="angle-meta">
+                            <div><span class="meta-label">證據支持:</span></div>
+                            <ul class="meta-list">
+                                ${angle.evidence.map(e => `<li>${e}</li>`).join('')}
+                            </ul>
+                        </div>
+                        
+                        <div class="angle-meta" style="margin-top: 8px;">
+                            <div><span class="meta-label">建議消息源:</span></div>
+                            <ul class="meta-list">
+                                ${angle.suggested_sources.map(s => `<li>${s}</li>`).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                 `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 頁面載入時更新 Turbo 按鈕狀態
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(updateTurboButtons, 1000);
+
+            // 定期更新 (每 2 小時)
+            setInterval(updateTurboButtons, 2 * 60 * 60 * 1000);
+        });
+
     </script>
 </body>
 

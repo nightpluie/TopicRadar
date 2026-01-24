@@ -38,12 +38,12 @@ TopicRadar (專題雷達) is an AI-powered news monitoring dashboard for investi
 
 ### v2.1 New Features (2026-01-22)
 
-- 🌐 **Multilingual Keyword Management**: Automatic translation of keywords to EN/JA/KO, language indicators (EN/JP/KR badges)
-- ⚡ **Performance Optimizations**: 
+- **Multilingual Keyword Management**: Automatic translation of keywords to EN/JA/KO, language indicators (EN/JP/KR badges)
+- **Performance Optimizations**:
   - Auto-translation speed: 3x faster (3-6s → 1-2s, one API call instead of three)
   - Topic creation: 10-20x faster (15-40s → 1-2s, background threading for news/summary generation)
   - Loading status display for background tasks
-- 🔧 **Batch Translation Script**: Retroactively add multilingual keywords to all existing topics
+- **Batch Translation Script**: Retroactively add multilingual keywords to all existing topics
 
 ## Development Commands
 
@@ -111,7 +111,7 @@ See `.env.example` for template with Chinese comments.
 - `topic_owners`: User ownership mapping `{topic_id: user_id}`
 
 **Persisted Files**:
-- `topics_config.json`: Topic configurations (name, keywords {zh, en, ja}, negative_keywords, icon)
+- `topics_config.json`: Topic configurations (name, keywords {zh, en, ja, ko}, negative_keywords, icon)
 - `data_cache.json`: Cached news data for fast serving (ephemeral on Render free tier)
 
 **Supabase Database**:
@@ -205,6 +205,19 @@ def protected_route():
     return jsonify({'user': user_id})
 ```
 
+### Background Task Processing
+
+**Topic Creation Flow** (v2.1 Performance Optimization):
+- POST `/api/admin/topics` returns immediately (1-2s response time)
+- News fetching and summary generation run in background thread
+- Frontend shows loading status in status bar
+- Prevents timeout on slow AI API calls
+
+**Implementation**:
+- `threading.Thread(target=update_topic_news, daemon=True).start()` after topic creation
+- User gets instant feedback, data populates asynchronously
+- Status bar displays "Generating news and summary..." during background execution
+
 ### Deduplication Logic
 
 Uses MD5 hash of news titles to prevent duplicates (app.py:478, 504, 511, 542). Existing hashes are preserved when merging new items with in-memory storage.
@@ -220,7 +233,7 @@ Uses MD5 hash of news titles to prevent duplicates (app.py:478, 504, 511, 542). 
 **Positive Keywords** (app.py:415-440):
 - Match any keyword in title or summary (case-insensitive)
 - Taiwan news: uses `keywords.zh` array
-- International news: uses combined `keywords.en + keywords.ja` arrays
+- International news: uses combined `keywords.en + keywords.ja + keywords.ko` arrays
 
 **Negative Keywords**:
 - Excludes news matching any negative keyword (e.g., "藝人", "明星" to filter entertainment)
@@ -231,6 +244,22 @@ Uses MD5 hash of news titles to prevent duplicates (app.py:478, 504, 511, 542). 
 - Current format: `keywords: {zh: [], en: [], ja: [], ko: []}` (multilang dict with Korean)
 - Auto-translation: When creating topics without AI, system auto-translates ZH → EN/JA/KO
 - Code handles both formats with `normalize_keywords()` function
+
+**Example Topic Structure**:
+```json
+{
+  "topic_id": {
+    "name": "服務業移工",
+    "keywords": {
+      "zh": ["移工", "外勞", "勞動部"],
+      "en": ["migrant workers", "foreign labor", "Ministry of Labor"],
+      "ja": ["移民労働者", "外国人労働者", "労働省"],
+      "ko": ["이주 노동자", "외국인 노동자", "노동부"]
+    },
+    "negative_keywords": ["娛樂", "明星", "藝人"]
+  }
+}
+```
 
 ## AI Integration
 
@@ -338,6 +367,26 @@ Monitor console output for:
 - `[UPDATE] 開始更新新聞 - HH:MM:SS` (every 30min)
 - `[SUMMARY] 開始 AI 摘要...` (08:00, 18:00)
 - `[SEARCH] {topic}: 只有 N 則，使用 Google News 搜索補充...` (fallback triggered)
+
+### Debug Data Store
+```bash
+python3
+>>> from app import DATA_STORE
+>>> print(DATA_STORE.keys())  # See all stored data
+>>> print(len(DATA_STORE['topics']['topic_id']))  # Count Taiwan news for a topic
+>>> print(DATA_STORE['summaries']['topic_id'])  # View AI summary
+```
+
+### Test Multilingual Keywords
+```bash
+python3
+>>> from app import normalize_keywords, auto_translate_keywords
+>>> # Test normalization (handles old vs new format)
+>>> normalize_keywords(['移工', '外勞'])  # Old format
+{'zh': ['移工', '外勞'], 'en': [], 'ja': [], 'ko': []}
+>>> # Test auto-translation
+>>> auto_translate_keywords({'zh': ['移工']})  # Returns with en/ja/ko filled
+```
 
 ## Common Issues & Solutions
 

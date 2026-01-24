@@ -1090,9 +1090,29 @@ def analyze_topic_angles(topic_id, news_data, summary_context=None):
             }
             
         angles_text = result['candidates'][0]['content']['parts'][0]['text']
-        angles_data = json.loads(angles_text)
-        return angles_data
-        
+
+        # 清理可能的 markdown 代碼塊標記
+        angles_text = angles_text.strip()
+        if angles_text.startswith('```json'):
+            angles_text = angles_text[7:]  # 移除 ```json
+        if angles_text.startswith('```'):
+            angles_text = angles_text[3:]  # 移除 ```
+        if angles_text.endswith('```'):
+            angles_text = angles_text[:-3]  # 移除結尾的 ```
+        angles_text = angles_text.strip()
+
+        # 嘗試解析 JSON
+        try:
+            angles_data = json.loads(angles_text)
+            return angles_data
+        except json.JSONDecodeError as json_err:
+            print(f"[AI-ANALYZE] JSON 解析失敗: {json_err}")
+            print(f"[AI-ANALYZE] 原始文本: {angles_text[:500]}")  # 只印前 500 字元
+            return {
+                "angles": [],
+                "summary": f"AI 回應格式異常，無法解析結果。錯誤: {str(json_err)}"
+            }
+
     except Exception as e:
         print(f"[AI-ANALYZE] Gemini 分析失敗 (Exception): {e}")
         return {

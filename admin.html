@@ -148,6 +148,11 @@
             background: rgba(0, 242, 255, 0.08);
         }
 
+        .topic-actions {
+            position: relative;
+            z-index: 10;
+        }
+
         .topic-actions button {
             background: none;
             border: none;
@@ -1707,7 +1712,12 @@
         }
 
         async function turboAnalyze(topicId) {
-            const btn = document.querySelector(`[data-topic-id="${topicId}"] .turbo-btn`);
+            const btn = document.querySelector(`[data-topic-id="${topicId}"]`);
+
+            // 檢查按鈕是否已就緒(有足夠新聞)
+            if (!btn || !btn.classList.contains('ready')) {
+                return; // 未就緒,不執行分析
+            }
 
             // 開啟 Modal
             document.getElementById('analysis-modal').classList.add('active');

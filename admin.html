@@ -121,8 +121,11 @@
         .topic-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
+            /* 改為靠上對齊，避免標題換行時按鈕跑位 */
             margin-bottom: 15px;
+            gap: 10px;
+            /* 標題與按鈕間的最小間距 */
         }
 
         .topic-header h3 {
@@ -130,6 +133,12 @@
             align-items: center;
             gap: 8px;
             font-size: 18px;
+            flex-wrap: wrap;
+            /* 允許標題與標籤換行 */
+            margin: 0;
+            /* 移除預設邊距 */
+            line-height: 1.4;
+            /* 增加行高 */
         }
 
         .lang-indicators {
@@ -151,6 +160,14 @@
         .topic-actions {
             position: relative;
             z-index: 10;
+            flex-shrink: 0;
+            /* 防止按鈕區塊被壓縮 */
+            white-space: nowrap;
+            /* 防止按鈕換行 */
+            margin-left: auto;
+            /* 強制靠右 */
+            padding-top: 2px;
+            /* 微調垂直位置以對齊標題文字 */
         }
 
         .topic-actions button {

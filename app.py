@@ -3101,16 +3101,16 @@ def update_user_role(user_id):
 
 def init_scheduler():
     scheduler = BackgroundScheduler(timezone='Asia/Taipei')
-    # 新聞更新排程（每小時一次，錯開時間）
+    # 新聞更新排程（國內每小時，國際每3小時）
     scheduler.add_job(update_domestic_news, 'cron', minute='0')
-    scheduler.add_job(update_international_news, 'cron', minute='30')
-    
+    scheduler.add_job(update_international_news, 'cron', hour='*/3', minute='30')
+
     # 摘要生成排程（每天 08:00, 12:00, 18:00）
     scheduler.add_job(update_all_summaries, 'cron', hour=8, minute=0)
     scheduler.add_job(update_all_summaries, 'cron', hour=12, minute=0)
     scheduler.add_job(update_all_summaries, 'cron', hour=18, minute=0)
     scheduler.start()
-    print("[SCHEDULER] 排程已啟動 - 國內:每小時0分, 國際:每小時30分, 摘要:08:00/12:00/18:00")
+    print("[SCHEDULER] 排程已啟動 - 國內:每小時0分, 國際:每3小時30分, 摘要:08:00/12:00/18:00")
 
 import urllib3
 urllib3.disable_warnings()

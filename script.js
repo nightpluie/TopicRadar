@@ -421,7 +421,14 @@ async function checkLoadingStatus() {
         if (!statusEl) return;
 
         if (status.is_loading) {
+            // 根據 load_mode 區分顯示文字
             let statusText = '蒐集資料';
+            if (status.load_mode === 'cache') {
+                statusText = '恢復快取';  // 從資料庫載入舊資料
+            } else if (status.load_mode === 'fetch') {
+                statusText = '蒐集資料';  // 從 RSS 抓取新資料
+            }
+
             if (status.phase === 'summary') {
                 statusText = '生成動態中';
             }
@@ -434,6 +441,7 @@ async function checkLoadingStatus() {
         } else if (status.total > 0) {
             statusEl.textContent = '已更新';
             statusEl.className = 'status-loaded';
+
 
             // 只在從「載入中」變成「已載入」時才重新讀取資料
             if (lastLoadingStatus === 'loading') {

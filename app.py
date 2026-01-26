@@ -123,7 +123,8 @@ LOADING_STATUS = {
     'current': 0,
     'total': 0,
     'current_topic': '',
-    'phase': ''  # 'news' 或 'summary'
+    'phase': '',  # 'news' 或 'summary'
+    'load_mode': ''  # 'cache' = 讀取快取, 'fetch' = 蒐集新資料
 }
 
 TOPICS = {}
@@ -1294,7 +1295,8 @@ def load_user_data(user_id, check_freshness=False):
             'summaries': {},
             'last_update': '',
             'is_loading': True,
-            'phase': 'news'  # 使用者專屬的 phase 狀態
+            'phase': 'news',  # 使用者專屬的 phase 狀態
+            'load_mode': 'cache'  # 先嘗試讀取快取
         }
 
         # 嘗試從 Supabase 資料庫載入快取
@@ -1339,8 +1341,9 @@ def load_user_data(user_id, check_freshness=False):
 
     # 4. 啟動背景執行緒（適用於資料過期或全新載入的情況）
     if user_id in DATA_STORE:
-        # 確保標記為載入中
+        # 確保標記為載入中，並設置為蒐集新資料模式
         DATA_STORE[user_id]['is_loading'] = True
+        DATA_STORE[user_id]['load_mode'] = 'fetch'  # 開始蒐集新資料
         
         thread = threading.Thread(target=_load_user_data_worker, args=(user_id,))
         thread.daemon = True
@@ -2428,12 +2431,16 @@ def loading_status():
                             if tid in user_data.get('topics', {}) or tid in user_data.get('international', {}):
                                 loaded_count += 1
                         
+                        # 取得載入模式：cache = 恢復快取, fetch = 蒐集新資料
+                        load_mode = user_data.get('load_mode', 'fetch')
+                        
                         return jsonify({
                             'is_loading': True,
                             'current': loaded_count,
                             'total': user_topic_count,
                             'phase': user_data.get('phase', 'news'),
-                            'current_topic': '資料載入中...'
+                            'current_topic': '資料載入中...',
+                            'load_mode': load_mode  # 新增：區分載入模式
                         })
                     
                     # is_loading=False，檢查資料完整性
@@ -3176,16 +3183,9 @@ def discover_topic_angles(topic_id):
         print(f"[DISCOVER-ANGLES] 錯誤: {e}")
         return jsonify({'error': f'分析失敗: {str(e)}'}), 500
 
-if __name__ == '__main__':
-    import threading
-    import sys
 
-    # 按需載入策略：不在啟動時載入所有使用者資料
-    # 使用者登入時才會載入他們的專題資料
-    print("[SERVER] 伺服器啟動中... (使用按需載入策略，使用者登入時才載入資料)")
-    app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
+# ============ 角度發現功能 API (Turbo 深度分析) ============
 
-# ============ 角度發現功能 API ============
 
 @app.route('/api/topics/<topic_id>/archive-count', methods=['GET'])
 def get_archive_count(topic_id):
@@ -3422,3 +3422,11 @@ def get_analysis_status(topic_id):
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# ============ Main Entry Point ============
+
+if __name__ == '__main__':
+    # 按需載入策略：不在啟動時載入所有使用者資料
+    # 使用者登入時才會載入他們的專題資料
+    print("[SERVER] 伺服器啟動中... (使用按需載入策略，使用者登入時才載入資料)")
+    app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)

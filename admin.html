@@ -1642,13 +1642,21 @@
                 const total = status.total || 0;
 
                 if (status.is_loading) {
+                    // 根據 load_mode 區分顯示文字
                     let statusText = '蒐集資料'; // Default
+                    if (status.load_mode === 'cache') {
+                        statusText = '恢復快取';  // 從資料庫載入舊資料
+                    } else if (status.load_mode === 'fetch') {
+                        statusText = '蒐集資料';  // 從 RSS 抓取新資料
+                    }
+
                     if (status.phase === 'summary') {
                         statusText = '生成動態中';
                     }
                     statusEl.textContent = `${statusText} ${current}/${total}`;
                     statusEl.className = 'status-loading';
                 } else if (total > 0) {
+
                     statusEl.textContent = '已更新';
                     statusEl.className = 'status-loaded';
                     // 載入完成後重新讀取專題數據

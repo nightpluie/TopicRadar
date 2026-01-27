@@ -1071,7 +1071,7 @@ def analyze_topic_angles(topic_id, news_data, summary_context=None):
                 "anthropic-version": "2023-06-01"
             },
             json={
-                "model": "claude-sonnet-4-5-20250929",
+                "model": "claude-3-5-sonnet-20240620",
                 "max_tokens": 4096,
                 "messages": [
                     {"role": "user", "content": prompt}

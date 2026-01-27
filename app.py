@@ -1005,7 +1005,14 @@ def archive_news_to_db(user_id, topic_id, news_list):
         print(f"[ARCHIVE] 成功歸檔 {archived_count} 則新聞")
 
 def analyze_topic_angles(topic_id, news_data, summary_context=None):
-    """使用 Gemini 2.0 Pro 分析專題角度"""
+    """使用 Claude Opus 4.5 分析專題角度"""
+    
+    if not ANTHROPIC_API_KEY:
+        print("[AI-ANALYZE] Anthropic API Key 未設定")
+        return {
+            "angles": [],
+            "summary": "Claude API 未設定，無法進行深度分析"
+        }
     
     # 準備新聞摘要
     news_text = "\n\n".join([
@@ -1018,7 +1025,7 @@ def analyze_topic_angles(topic_id, news_data, summary_context=None):
     if summary_context:
         context_text = f"【專題背景與最新動態】 (由 Perplexity AI 提供)\n{summary_context}\n\n"
 
-    # Gemini Prompt
+    # Claude Prompt
     prompt = f"""你是資深調查記者的 AI 助手。閱讀以下 {len(news_data)} 則新聞，發現「單則新聞看不出來，但綜合分析才浮現」的深度報導角度。
 
 {context_text}【新聞資料】（最近 30 天）
@@ -1040,7 +1047,7 @@ def analyze_topic_angles(topic_id, news_data, summary_context=None):
 - 有新聞價值（影響面、爭議性、時效性）
 - 提供證據線索（從現有新聞中找到的蛛絲馬跡）
 
-輸出 JSON 格式：
+請直接輸出 JSON 格式（不要加 markdown 標記）：
 {{
   "angles": [
     {{
@@ -1055,74 +1062,76 @@ def analyze_topic_angles(topic_id, news_data, summary_context=None):
 }}"""
     
     try:
-        # 使用正確的 Gemini 3 Pro Preview 模型名稱
-        model_name = "gemini-3-pro-preview" 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-        
+        # 使用 Claude Sonnet 4.5 (速度與成本的最佳平衡)
         response = requests.post(
-            url,
-            headers={"Content-Type": "application/json"},
-            params={"key": GEMINI_API_KEY},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.3,
-                    "maxOutputTokens": 2048,
-                    "responseMimeType": "application/json"
-                }
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01"
             },
-            timeout=60 # 增加 timeout 避免分析過久超時
+            json={
+                "model": "claude-sonnet-4-5-20250929",
+                "max_tokens": 4096,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ]
+            },
+            timeout=120  # Claude 分析可能需要較長時間
         )
         
         if response.status_code != 200:
             error_msg = f"API Error {response.status_code}: {response.text}"
-            print(f"[AI-ANALYZE] {error_msg}")
+            print(f"[AI-ANALYZE] Claude 分析失敗: {error_msg}")
             return {
                 "angles": [],
-                "summary": f"分析服務暫時無法使用 ({response.status_code})"
+                "summary": f"Claude API 錯誤 ({response.status_code})"
             }
         
         result = response.json()
         
-        if 'candidates' not in result:
-            print(f"[AI-ANALYZE] 分析失敗，API 回應異常: {result}")
-            # 檢查是否有 safety ratings 導致的阻擋
-            if 'promptFeedback' in result:
-                return {
-                    "angles": [],
-                    "summary": "分析內容因安全政策被阻擋，無法產生報告。"
-                }
+        # Claude Messages API 回應格式
+        if 'content' not in result or not result['content']:
+            print(f"[AI-ANALYZE] Claude 回應異常: {result}")
             return {
                 "angles": [],
-                "summary": "無法解析 AI 回應，請稍後再試。"
+                "summary": "Claude 回應格式異常"
             }
-            
-        angles_text = result['candidates'][0]['content']['parts'][0]['text']
+        
+        # 取得文字內容
+        angles_text = result['content'][0]['text']
 
         # 清理可能的 markdown 代碼塊標記
         angles_text = angles_text.strip()
         if angles_text.startswith('```json'):
-            angles_text = angles_text[7:]  # 移除 ```json
+            angles_text = angles_text[7:]
         if angles_text.startswith('```'):
-            angles_text = angles_text[3:]  # 移除 ```
+            angles_text = angles_text[3:]
         if angles_text.endswith('```'):
-            angles_text = angles_text[:-3]  # 移除結尾的 ```
+            angles_text = angles_text[:-3]
         angles_text = angles_text.strip()
 
         # 嘗試解析 JSON
         try:
             angles_data = json.loads(angles_text)
+            print(f"[AI-ANALYZE] Claude Opus 4.5 分析成功，找到 {len(angles_data.get('angles', []))} 個角度")
             return angles_data
         except json.JSONDecodeError as json_err:
             print(f"[AI-ANALYZE] JSON 解析失敗: {json_err}")
-            print(f"[AI-ANALYZE] 原始文本: {angles_text[:500]}")  # 只印前 500 字元
+            print(f"[AI-ANALYZE] 原始文本: {angles_text[:500]}")
             return {
                 "angles": [],
-                "summary": f"AI 回應格式異常，無法解析結果。錯誤: {str(json_err)}"
+                "summary": f"AI 回應格式異常，無法解析結果"
             }
 
+    except requests.exceptions.Timeout:
+        print(f"[AI-ANALYZE] Claude 分析超時")
+        return {
+            "angles": [],
+            "summary": "分析超時，請稍後再試"
+        }
     except Exception as e:
-        print(f"[AI-ANALYZE] Gemini 分析失敗 (Exception): {e}")
+        print(f"[AI-ANALYZE] Claude 分析失敗 (Exception): {e}")
         return {
             "angles": [],
             "summary": f"分析過程發生錯誤: {str(e)}"
